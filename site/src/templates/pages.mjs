@@ -33,6 +33,7 @@ const section = (id, title, note, content) =>
   </section>`;
 
 function sourceLine(p, site, t) {
+  if (p.repoUrl) return html`<a href="${p.repoUrl}" rel="noopener">${t.row.github}</a>`;
   if (!p.repoPath) return "";
   return site.repoUrl
     ? html`<a href="${site.repoUrl}/tree/main/${p.repoPath}" rel="noopener">${t.row.github}</a>`
@@ -57,7 +58,7 @@ export function projectRow(p, { site, t, lang }, { headingLevel = 3 } = {}) {
     <div class="project-side">
       <dl>
         <dt>${t.row.status}</dt>
-        <dd><span class="status ${p.repoPath ? "built" : ""}">${p.status}</span></dd>
+        <dd><span class="status ${p.repoPath || p.repoUrl ? "built" : ""}">${p.status}</span></dd>
         ${p.org ? html`<dt>${t.row.company}</dt><dd><bdi dir="ltr">${p.org}</bdi></dd>` : ""}
         <dt>${t.row.year}</dt>
         <dd><bdi dir="ltr">${p.period}</bdi></dd>
@@ -69,7 +70,7 @@ export function projectRow(p, { site, t, lang }, { headingLevel = 3 } = {}) {
               <dd>${p.links.map((l) => html`<a href="${l.url}" rel="noopener" dir="ltr">${new URL(l.url).host}</a>`)}</dd>`
             : ""
         }
-        ${p.repoPath ? html`<dt>${t.row.code}</dt><dd>${sourceLine(p, site, t)}</dd>` : ""}
+        ${p.repoPath || p.repoUrl ? html`<dt>${t.row.code}</dt><dd>${sourceLine(p, site, t)}</dd>` : ""}
       </dl>
     </div>
   </li>`;
@@ -436,7 +437,7 @@ export function casePage(ctx) {
               ? html`<div><dt>${t.row.live}</dt><dd>${p.links.map((l) => html`<a href="${l.url}" rel="noopener" dir="ltr">${new URL(l.url).host}</a>`)}</dd></div>`
               : ""
           }
-          ${p.repoPath ? html`<div><dt>${t.row.code}</dt><dd>${sourceLine(p, site, t)}</dd></div>` : ""}
+          ${p.repoPath || p.repoUrl ? html`<div><dt>${t.row.code}</dt><dd>${sourceLine(p, site, t)}</dd></div>` : ""}
         </dl>
       </div>
     </header>

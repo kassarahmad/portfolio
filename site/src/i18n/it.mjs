@@ -609,5 +609,124 @@ export default {
         ["Funzionamento del backend e dell'assistente", L, "Codice non disponibile"],
       ],
     },
+    "kassar-house-server": {
+      title: "kassar-house-server",
+      summary:
+        "Strumenti per un server domestico self-hosted: backup deduplicati e verificabili con conservazione e ripristino sicuro, controlli di salute che avvisano solo quando qualcosa cambia, e servizi raggiungibili solo dalla rete di casa dietro un unico proxy HTTPS.",
+      status: "Open source",
+      role: "Progettazione, sviluppo, test e documentazione",
+      problem:
+        "Un server di casa si avvia in fretta e si perde altrettanto in fretta: un disco guasto si porta via password, foto e file sincronizzati, e nessuno si accorge di un disco pieno o di un container fermo finché qualcosa non si rompe. Questo progetto è la parte che lo rende affidabile: backup controllati e davvero ripristinabili, avvisi quando uno stato cambia, e servizi raggiungibili da casa ma non da internet.",
+      users: ["Chi gestisce qualche servizio self-hosted su una macchina Debian, Ubuntu o Raspberry Pi a casa."],
+      features: [
+        "`khs backup`: snapshot indirizzati per contenuto su un secondo disco. I blocchi prendono il nome dal loro SHA-256, sono salvati una volta sola e compressi quando conviene; i file non modificati non vengono nemmeno riletti.",
+        "`khs restore`: ripristina contenuto, permessi, date, proprietari e link simbolici, rifiuta percorsi o link piazzati che portano fuori dalla destinazione e lascia i file esistenti se non si chiede di sovrascriverli.",
+        "`khs check --read-data`: ricalcola l'hash di ogni blocco e indica quali snapshot sono colpiti da un blocco mancante o danneggiato.",
+        "Conservazione per ultimi, giorno, settimana ISO, mese e anno, in ora locale, con una pulizia che non elimina mai un blocco usato da uno snapshot conservato.",
+        "`khs health`: controlli HTTP, TCP, disco, systemd, temperatura, memoria ed età dell'ultimo backup; notifiche ntfy o webhook solo quando un controllo cambia stato.",
+        "Caddy con una propria autorità di certificazione davanti a Vaultwarden, Jellyfin e Syncthing, che risponde solo a indirizzi privati; porte legate all'indirizzo della rete locale.",
+      ],
+      diagram: {
+        title: "kassar-house-server: servizi e backup",
+        caption:
+          "Il servizio di backup può leggere tutto ma scrivere solo sul disco dei backup; il timer dei controlli (non disegnato) verifica i servizi, i dischi e l'età dell'ultimo backup.",
+      },
+      decisions: [
+        {
+          title: "Uno snapshot esiste solo quando esistono tutti i suoi dati",
+          body: "Blocchi e manifest vengono scritti in un file temporaneo e poi rinominati, e il manifest per ultimo. Un backup interrotto quindi non lascia nessuno snapshot, solo blocchi non referenziati che `prune` elimina. Un `flock` impedisce che un backup e una pulizia girino insieme.",
+        },
+        {
+          title: "Il ripristino come operazione più rischiosa",
+          body: "Un manifest può essere danneggiato o costruito ad arte, e la destinazione può contenere già dei link simbolici. I percorsi con `..` o con `/` iniziale sono rifiutati, le cartelle vengono create un componente alla volta rifiutando i link, i file si aprono con `O_NOFOLLOW` e i link vengono creati per ultimi. Da root si ripristinano anche i proprietari, perché Syncthing o Jellyfin smettono di funzionare se i loro dati tornano di proprietà di root.",
+        },
+        {
+          title: "Privilegi minimi, verificati",
+          body: "L'unità notturna tiene solo `CAP_DAC_READ_SEARCH` e può scrivere solo sul disco dei backup. Provare il backup con esattamente quelle capability ha trovato un bug vero: aprire i file con `O_NOATIME` richiede di esserne proprietari o `CAP_FOWNER`, quindi ogni file di un altro utente veniva saltato. Ora un test di regressione esegue il backup con `setpriv` e le stesse capability dell'unità.",
+        },
+        {
+          title: "Docker scavalca il firewall",
+          body: "Le porte pubblicate dai container vengono inserite prima delle regole di ufw, quindi il firewall da solo non le tiene private. Lo stack lega ogni porta pubblicata all'indirizzo locale del server, Caddy risponde 403 ai client non privati e l'accesso da fuori casa è pensato tramite VPN, non con l'apertura di porte sul router.",
+        },
+      ],
+      testing:
+        "56 test, solo libreria standard: cicli completi che confrontano hash, permessi, date, proprietari e link; deduplicazione e rilevamento delle modifiche (anche una modifica che rimette la vecchia data); backup interrotti; blocchi mancanti e corrotti; attacchi al ripristino; conservazione per giorno, settimana ISO, mese e anno; controlli contro un vero server HTTP locale e socket; notifiche solo ai cambi di stato; e lo script di installazione contro una radice temporanea con i comandi registrati. Ogni controllo di sicurezza è stato verificato con mutazioni: disattivarlo fa fallire un test. Misurato sulla VM di sviluppo: 49 MiB in 1.250 file salvati in 2,9 s (16,6 MiB occupati), 0,12 s per un secondo backup senza modifiche, ripristino identico byte per byte.",
+      deployment:
+        "`provision/setup.sh` installa `khs`, la sua configurazione e due timer systemd isolati; `--harden` aggiunge ufw solo per la rete locale, SSH solo con chiave (saltato se non c'è una chiave installata, annullato se `sshd -t` lo rifiuta) e aggiornamenti di sicurezza automatici. Lo stack Compose e le unità sono validati staticamente; la CI scarica anche ogni immagine fissata e valida il Caddyfile. Non ancora eseguito per intero su un vero server di casa.",
+      limitations: [
+        "I backup non sono cifrati: il repository dovrebbe stare su un disco cifrato se può uscire di casa.",
+        "Blocchi di dimensione fissa, quindi inserire dati a metà di un file grande fa salvare di nuovo il resto.",
+        "Ancora nessuna copia fuori sede.",
+        "Container e timer sono stati validati ma non eseguiti su hardware reale.",
+      ],
+      roadmap: [
+        "Copia fuori sede su un remote rclone, con cifratura.",
+        "Blocchi definiti dal contenuto.",
+        "Prove di ripristino programmate.",
+      ],
+      contribution: "Progettato e realizzato per questo portfolio, in un repository dedicato.",
+      ledger: [
+        ["Backup, deduplicazione, ripristino e verifica", L, "56 test; esecuzione misurata sulla VM di sviluppo"],
+        ["Backup con le capability dell'unità systemd", L, "Test di regressione con setpriv"],
+        ["Script di installazione: idempotente, prova a secco, protezione SSH", L, "Test contro una radice temporanea"],
+        ["Stack Compose, Caddyfile, unità systemd", L, "Validati staticamente; non eseguiti su un server di casa"],
+      ],
+    },
+    jtime: {
+      title: "JTime",
+      summary:
+        "Un'app desktop JavaFX per pianificare progetti e misurare quanto durano davvero le attività, con report settimanali e mensili ed export CSV. Un progetto universitario che ho poi rafforzato con test, CI e correzioni per la sicurezza dei dati.",
+      status: "Open source",
+      role: "Sviluppatore: app originale, poi correzioni, funzionalità e test",
+      problem:
+        "Le stime servono solo se le confronti con quello che è successo davvero. JTime tiene in un unico posto progetti, attività con una stima, un piano sul calendario e il tempo realmente impiegato, così la differenza si vede per progetto e per settimana.",
+      users: ["Studenti e freelance che pianificano il proprio lavoro."],
+      features: [
+        "Progetti che si chiudono solo quando ogni attività è completata, e da quel momento non accettano nuove attività.",
+        "Attività con una stima; completarle registra il tempo effettivo e la data.",
+        "Un piano sul calendario senza duplicati; le attività completate non si possono pianificare.",
+        "Report per progetto (stima, tempo effettivo, scostamento) e report del tempo per qualsiasi intervallo, con le scorciatoie questa settimana e questo mese.",
+        "Export in testo, oppure tutte le attività in CSV che i fogli di calcolo aprono in sicurezza.",
+      ],
+      decisions: [
+        {
+          title: "Leggere il codice prima di aggiungere",
+          body: "Una revisione della versione originale ha trovato bug che facevano perdere dati: le modifiche al piano venivano salvate solo se qualcos'altro avviava un salvataggio, un archivio illeggibile veniva sostituito in silenzio da uno vuoto e poi sovrascritto, le durate negative oltre l'ora perdevano le ore nei report, ed eliminare un'attività la lasciava nel calendario. Ognuno ha ora un test di regressione.",
+        },
+        {
+          title: "Salvataggio e caricamento sicuri",
+          body: "L'archivio viene scritto in un file temporaneo e poi spostato al suo posto, così un crash non lo corrompe. Il caricamento passa da un `ObjectInputFilter` che accetta solo le classi dell'app e i pochi tipi del JDK che contengono. Un file illeggibile viene messo da parte e segnalato, mai sovrascritto.",
+        },
+        {
+          title: "Compatibile con i dati esistenti",
+          body: "La data di completamento è un nuovo campo che può essere vuoto, quindi gli archivi salvati con la versione 1.0 si aprono ancora; le attività completate prima della modifica vengono contate a parte nei report del tempo invece di sparire.",
+        },
+      ],
+      testing:
+        "20 test JUnit 5 su modello, controller, servizi e persistenza, con lo stesso collegamento dell'interfaccia, un archivio temporaneo e un orologio fisso. Reintrodurre ciascun bug corretto fa fallire un test. Maven Central non era raggiungibile dall'ambiente in cui sono state scritte le correzioni, quindi lì i test sono stati eseguiti con un sostituto minimo dell'API di JUnit, e la schermata modificata è stata verificata nei tipi contro degli stub delle classi JavaFX che usa. GitHub Actions esegue la build completa con JUnit e JavaFX veri.",
+      deployment:
+        "Applicazione desktop: `./gradlew run` con JDK 21. I dati restano in un file locale nella cartella dell'utente.",
+      limitations: [
+        "Un solo utente, solo salvataggio locale.",
+        "L'interfaccia è in italiano e non ha test automatici dell'interfaccia.",
+        "Nessun cronometro: il tempo effettivo si inserisce quando si completa un'attività.",
+      ],
+      roadmap: [
+        "Cronometro avvia/ferma.",
+        "Salvataggio su SQLite con import dall'archivio attuale.",
+        "Interfaccia in inglese.",
+      ],
+      contribution:
+        "Applicazione originale scritta da Ahmad per un corso dell'Università di Camerino; correzioni, funzionalità, test e CI della versione 1.1 sono nella cronologia del repository.",
+      ledger: [
+        ["Correzioni, report del tempo, export CSV", L, "20 test; i vecchi archivi si aprono"],
+        [
+          "Build completa con JavaFX nella CI",
+          L,
+          "Workflow aggiunto; risultato non verificato dall'ambiente di sviluppo",
+        ],
+        ["Modifiche all'interfaccia", L, "Verificate nei tipi contro stub JavaFX, non eseguite"],
+      ],
+    },
   },
 };

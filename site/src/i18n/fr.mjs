@@ -629,5 +629,130 @@ export default {
         ["Fonctionnement du backend et de l'assistant", L, "Code non disponible"],
       ],
     },
+    "kassar-house-server": {
+      title: "kassar-house-server",
+      summary:
+        "Des outils pour un serveur domestique auto-hébergé : des sauvegardes dédupliquées et vérifiables avec rétention et restauration sûre, des contrôles de santé qui n'alertent que lorsque quelque chose change, et des services accessibles uniquement depuis le réseau de la maison derrière un seul proxy HTTPS.",
+      status: "Open source",
+      role: "Conception, développement, tests et documentation",
+      problem:
+        "Un serveur à la maison se monte vite et se perd tout aussi vite : un disque en panne emporte mots de passe, photos et fichiers synchronisés, et personne ne remarque un disque plein ou un conteneur arrêté avant que quelque chose casse. Ce projet est la partie qui le rend fiable : des sauvegardes contrôlées et réellement restaurables, des alertes quand un état change, et des services accessibles depuis la maison mais pas depuis internet.",
+      users: [
+        "Toute personne qui fait tourner quelques services auto-hébergés sur une machine Debian, Ubuntu ou Raspberry Pi chez elle.",
+      ],
+      features: [
+        "`khs backup` : des instantanés adressés par contenu sur un second disque. Les blocs portent le nom de leur SHA-256, sont stockés une seule fois et compressés quand c'est utile ; les fichiers inchangés ne sont même pas relus.",
+        "`khs restore` : restaure contenu, droits, dates, propriétaires et liens symboliques, refuse les chemins ou les liens placés qui mènent hors de la cible, et garde les fichiers existants sauf demande d'écrasement.",
+        "`khs check --read-data` : recalcule le hash de chaque bloc et indique quels instantanés sont touchés par un bloc manquant ou abîmé.",
+        "Rétention par derniers, jour, semaine ISO, mois et année, en heure locale, avec un nettoyage qui ne supprime jamais un bloc utilisé par un instantané conservé.",
+        "`khs health` : contrôles HTTP, TCP, disque, systemd, température, mémoire et âge de la dernière sauvegarde ; notifications ntfy ou webhook uniquement quand un contrôle change d'état.",
+        "Caddy avec sa propre autorité de certification devant Vaultwarden, Jellyfin et Syncthing, qui ne répond qu'aux adresses privées ; ports liés à l'adresse du réseau local.",
+      ],
+      diagram: {
+        title: "kassar-house-server : services et sauvegardes",
+        caption:
+          "Le service de sauvegarde peut tout lire mais n'écrire que sur le disque de sauvegarde ; le minuteur des contrôles (non dessiné) vérifie les services, les disques et l'âge de la dernière sauvegarde.",
+      },
+      decisions: [
+        {
+          title: "Un instantané n'existe que lorsque toutes ses données existent",
+          body: "Blocs et manifestes sont écrits dans un fichier temporaire puis renommés, et le manifeste en dernier. Une sauvegarde interrompue ne laisse donc aucun instantané, seulement des blocs non référencés que `prune` supprime. Un `flock` empêche une sauvegarde et un nettoyage de tourner en même temps.",
+        },
+        {
+          title: "La restauration, opération la plus risquée",
+          body: "Un manifeste peut être abîmé ou fabriqué, et la cible peut déjà contenir des liens symboliques. Les chemins avec `..` ou un `/` initial sont refusés, les dossiers sont créés un composant à la fois en refusant les liens, les fichiers sont ouverts avec `O_NOFOLLOW` et les liens créés en dernier. En root, les propriétaires sont restaurés, car Syncthing ou Jellyfin cessent de fonctionner si leurs données reviennent à root.",
+        },
+        {
+          title: "Moindre privilège, vérifié",
+          body: "L'unité nocturne ne garde que `CAP_DAC_READ_SEARCH` et ne peut écrire que sur le disque de sauvegarde. Tester la sauvegarde avec exactement ces capacités a révélé un vrai bug : ouvrir un fichier avec `O_NOATIME` exige d'en être propriétaire ou `CAP_FOWNER`, donc chaque fichier d'un autre utilisateur était ignoré. Un test de régression lance maintenant la sauvegarde via `setpriv` avec les capacités de l'unité.",
+        },
+        {
+          title: "Docker contourne le pare-feu",
+          body: "Les ports publiés par les conteneurs passent avant les règles d'ufw, donc le pare-feu seul ne les garde pas privés. La pile lie chaque port publié à l'adresse locale du serveur, Caddy répond 403 aux clients non privés, et l'accès depuis l'extérieur passe par un VPN plutôt que par l'ouverture de ports sur la box.",
+        },
+      ],
+      testing:
+        "56 tests, bibliothèque standard uniquement : allers-retours comparant hash, droits, dates, propriétaires et liens ; déduplication et détection des modifications (y compris une modification qui remet l'ancienne date) ; sauvegardes interrompues ; blocs manquants et corrompus ; attaques contre la restauration ; rétention par jour, semaine ISO, mois et année ; contrôles face à un vrai serveur HTTP local et à des sockets ; notifications seulement aux changements d'état ; et le script d'installation contre une racine temporaire avec les commandes enregistrées. Chaque protection a été vérifiée par mutation : la désactiver fait échouer un test. Mesuré sur la VM de développement : 49 Mio en 1 250 fichiers sauvegardés en 2,9 s (16,6 Mio stockés), 0,12 s pour une seconde sauvegarde sans changement, restauration identique octet par octet.",
+      deployment:
+        "`provision/setup.sh` installe `khs`, sa configuration et deux minuteurs systemd isolés ; `--harden` ajoute ufw limité au réseau local, SSH par clé uniquement (ignoré si aucune clé n'est installée, annulé si `sshd -t` le refuse) et les mises à jour de sécurité automatiques. La pile Compose et les unités sont validées statiquement ; la CI télécharge aussi chaque image épinglée et valide le Caddyfile. Pas encore exécuté de bout en bout sur un vrai serveur domestique.",
+      limitations: [
+        "Les sauvegardes ne sont pas chiffrées : le dépôt doit être sur un disque chiffré s'il peut quitter la maison.",
+        "Blocs de taille fixe : insérer des données au milieu d'un gros fichier oblige à restocker la suite.",
+        "Pas encore de copie hors site.",
+        "Les conteneurs et les minuteurs ont été validés mais pas exécutés sur du vrai matériel.",
+      ],
+      roadmap: [
+        "Copie hors site vers un remote rclone, avec chiffrement.",
+        "Découpage défini par le contenu.",
+        "Exercices de restauration planifiés.",
+      ],
+      contribution: "Conçu et réalisé pour ce portfolio, dans un dépôt dédié.",
+      ledger: [
+        [
+          "Sauvegarde, déduplication, restauration et vérification",
+          L,
+          "56 tests ; exécution mesurée sur la VM de développement",
+        ],
+        ["Sauvegarde avec les capacités de l'unité systemd", L, "Test de régression avec setpriv"],
+        ["Script d'installation : idempotent, essai à blanc, garde-fou SSH", L, "Tests contre une racine temporaire"],
+        ["Pile Compose, Caddyfile, unités systemd", L, "Validés statiquement ; pas exécutés sur un serveur domestique"],
+      ],
+    },
+    jtime: {
+      title: "JTime",
+      summary:
+        "Une application de bureau JavaFX pour planifier des projets et mesurer combien de temps prennent vraiment les tâches, avec des rapports hebdomadaires et mensuels et un export CSV. Un projet universitaire que j'ai ensuite renforcé avec des tests, de la CI et des corrections pour la sûreté des données.",
+      status: "Open source",
+      role: "Développeur : application d'origine, puis corrections, fonctionnalités et tests",
+      problem:
+        "Une estimation n'est utile que si on la compare à ce qui s'est réellement passé. JTime garde au même endroit les projets, les tâches avec une estimation, un planning sur le calendrier et le temps réellement passé, pour que l'écart soit visible par projet et par semaine.",
+      users: ["Étudiants et indépendants qui planifient leur propre travail."],
+      features: [
+        "Des projets qui ne se ferment que lorsque toutes les tâches sont terminées, et qui n'acceptent ensuite plus de nouvelles tâches.",
+        "Des tâches avec une estimation ; en terminer une enregistre le temps réel et la date.",
+        "Un planning sur le calendrier sans doublons ; les tâches terminées ne peuvent pas être planifiées.",
+        "Rapports par projet (estimation, temps réel, écart) et rapport de temps pour n'importe quelle période, avec les raccourcis cette semaine et ce mois-ci.",
+        "Export en texte, ou de toutes les tâches en CSV que les tableurs ouvrent sans risque.",
+      ],
+      decisions: [
+        {
+          title: "Lire le code avant d'ajouter",
+          body: "Une relecture de la version d'origine a trouvé des bugs qui faisaient perdre des données : les changements de planning n'étaient enregistrés que si autre chose déclenchait une sauvegarde, une archive illisible était remplacée en silence par une archive vide puis écrasée, les durées négatives de plus d'une heure perdaient leurs heures dans les rapports, et supprimer une tâche la laissait dans le calendrier. Chacun a maintenant un test de régression.",
+        },
+        {
+          title: "Enregistrer et charger en sécurité",
+          body: "L'archive est écrite dans un fichier temporaire puis déplacée à sa place, donc un plantage ne peut pas la corrompre. Le chargement passe par un `ObjectInputFilter` qui n'accepte que les classes de l'application et les quelques types du JDK qu'elles contiennent. Un fichier illisible est mis de côté et signalé, jamais écrasé.",
+        },
+        {
+          title: "Compatible avec les données existantes",
+          body: "La date de fin est un nouveau champ qui peut être vide, donc les archives enregistrées par la version 1.0 s'ouvrent toujours ; les tâches terminées avant ce changement sont comptées à part dans les rapports de temps au lieu de disparaître.",
+        },
+      ],
+      testing:
+        "20 tests JUnit 5 sur le modèle, les contrôleurs, les services et la persistance, avec le même câblage que l'interface, une archive temporaire et une horloge fixe. Réintroduire chaque bug corrigé fait échouer un test. Maven Central n'était pas accessible depuis l'environnement où les corrections ont été écrites : les tests y ont tourné avec un substitut minimal de l'API JUnit, et l'écran modifié a été vérifié au niveau des types contre des stubs des classes JavaFX qu'il utilise. GitHub Actions lance la compilation complète avec les vrais JUnit et JavaFX.",
+      deployment:
+        "Application de bureau : `./gradlew run` avec le JDK 21. Les données restent dans un fichier local du dossier de l'utilisateur.",
+      limitations: [
+        "Un seul utilisateur, stockage local uniquement.",
+        "L'interface est en italien et n'a pas de tests automatisés d'interface.",
+        "Pas de chronomètre : le temps réel est saisi en terminant une tâche.",
+      ],
+      roadmap: [
+        "Chronomètre démarrer/arrêter.",
+        "Stockage SQLite avec import depuis l'archive actuelle.",
+        "Interface en anglais.",
+      ],
+      contribution:
+        "Application d'origine écrite par Ahmad pour un cours de l'Université de Camerino ; les corrections, fonctionnalités, tests et la CI de la version 1.1 sont dans l'historique du dépôt.",
+      ledger: [
+        ["Corrections, rapports de temps, export CSV", L, "20 tests ; les anciennes archives s'ouvrent"],
+        [
+          "Compilation complète avec JavaFX en CI",
+          L,
+          "Workflow ajouté ; résultat non vérifié depuis l'environnement de développement",
+        ],
+        ["Modifications de l'interface", L, "Vérifiées au niveau des types contre des stubs JavaFX, non exécutées"],
+      ],
+    },
   },
 };

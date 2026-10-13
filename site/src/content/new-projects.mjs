@@ -335,3 +335,157 @@ export const shipyard = {
     ["Runs on EC2 with real certificates", "unknown", "Not deployed"],
   ],
 };
+
+export const houseServer = {
+  slug: "kassar-house-server",
+  title: "kassar-house-server",
+  summary:
+    "Tooling for a self-hosted home server: deduplicated, verifiable backups with retention and safe restores, health checks that notify only when something changes, and a LAN-only service stack behind one HTTPS proxy.",
+  status: "Open source",
+  categories: ["cloud", "backend", "open-source"],
+  period: "2026",
+  role: "Design, implementation, tests and documentation",
+  stack: [
+    "Python 3 (standard library)",
+    "Linux /proc and /sys",
+    "systemd",
+    "Docker Compose",
+    "Caddy",
+    "Bash",
+    "ufw",
+    "GitHub Actions",
+  ],
+  repoUrl: "https://github.com/kassarahmad/kassar-house-server",
+  links: [],
+  featured: true,
+  problem:
+    "A home server is easy to start and easy to lose: one dead disk takes the passwords, photos and synced files with it, and nobody notices a full disk or a stopped container until something breaks. This project is the part that makes it dependable: backups that are checked and can actually be restored, alerts when a state changes, and services reachable from home but not from the internet.",
+  users: ["Anyone running a few self-hosted services on a Debian, Ubuntu or Raspberry Pi machine at home."],
+  features: [
+    "`khs backup`: content-addressed snapshots on a second disk. Chunks are named by their SHA-256, stored once, compressed when it helps; unchanged files are not even re-read.",
+    "`khs restore`: brings back content, modes, times, owners and symlinks, refuses paths or planted symlinks that lead outside the target, and keeps existing files unless asked to overwrite.",
+    "`khs check --read-data`: re-hashes every chunk and names the snapshots that a missing or damaged chunk affects.",
+    "Retention by last, day, ISO week, month and year, in local time, with a prune that never removes a chunk a kept snapshot uses.",
+    "`khs health`: HTTP, TCP, disk, systemd, temperature, memory and backup-age checks; ntfy or webhook notifications only when a check changes state.",
+    "Caddy with its own certificate authority in front of Vaultwarden, Jellyfin and Syncthing, answering only private addresses; ports bound to the LAN address.",
+  ],
+  diagram: {
+    id: "khs",
+    width: 780,
+    height: 250,
+    title: "kassar-house-server: services and backups",
+    nodes: [
+      { id: "lan", x: 20, y: 30, w: 150, h: 48, label: "LAN devices", sub: "https://*.home.arpa", kind: "ext" },
+      { id: "caddy", x: 250, y: 30, w: 160, h: 48, label: "Caddy", sub: "internal CA, LAN only" },
+      { id: "apps", x: 490, y: 30, w: 170, h: 48, label: "Vaultwarden, Jellyfin,", sub: "Syncthing" },
+      { id: "data", x: 490, y: 160, w: 170, h: 48, label: "/srv/house", sub: "service data", kind: "store" },
+      { id: "khs", x: 250, y: 160, w: 160, h: 48, label: "khs backup", sub: "nightly systemd timer" },
+      { id: "repo", x: 20, y: 160, w: 150, h: 48, label: "Backup disk", sub: "chunks + manifests", kind: "store" },
+    ],
+    edges: [
+      { from: "lan", to: "caddy", sides: ["right", "left"] },
+      { from: "caddy", to: "apps", sides: ["right", "left"] },
+      { from: "apps", to: "data", sides: ["bottom", "top"] },
+      { from: "data", to: "khs", sides: ["left", "right"], label: "reads", labelAt: [450, 176] },
+      { from: "khs", to: "repo", sides: ["left", "right"], label: "writes", labelAt: [210, 176] },
+    ],
+    caption:
+      "The backup service can read everything but write only to the backup disk; the health timer (not drawn) checks the services, the disks and the age of the last backup.",
+  },
+  decisions: [
+    {
+      title: "A snapshot exists only once all its data does",
+      body: "Chunks and manifests are written to a temporary file and renamed, and the manifest goes last. An interrupted backup therefore leaves no snapshot, only unreferenced chunks that `prune` removes. A `flock` keeps a backup and a prune from ever running at the same time.",
+    },
+    {
+      title: "Restore as the riskiest operation",
+      body: "A manifest could be damaged or crafted, and the target may already contain symlinks. Paths with `..` or a leading `/` are refused, directories are created one component at a time refusing symlinks, files are opened with `O_NOFOLLOW`, and links are created last. Owners are restored when running as root, because Syncthing or Jellyfin break if their data comes back owned by root.",
+    },
+    {
+      title: "Least privilege, tested",
+      body: "The nightly unit keeps only `CAP_DAC_READ_SEARCH` and may write only to the backup disk. Testing under exactly that capability set found a real bug: opening files with `O_NOATIME` needs ownership or `CAP_FOWNER`, so every file owned by another user was being skipped. There is now a regression test that runs the backup under `setpriv` with the unit's capabilities.",
+    },
+    {
+      title: "Docker bypasses the firewall",
+      body: "Published container ports are inserted ahead of ufw's rules, so a firewall alone doesn't keep them private. The stack binds every published port to the server's LAN address, Caddy answers 403 to non-private clients, and remote access is meant to go through a VPN instead of port forwarding.",
+    },
+  ],
+  testing:
+    "56 tests, standard library only: round trips comparing hashes, modes, times, owners and symlinks; deduplication and change detection (including an edit that restores the old mtime); interrupted backups; missing and corrupt chunks; restore attacks; retention by day, ISO week, month and year; health checks against a real local HTTP server and sockets; notifications only on change; and the setup script against a scratch root with recorded commands. Each safety check was mutation-tested: disabling it makes a test fail. Measured on the build VM: 49 MiB in 1,250 files backed up in 2.9 s (16.6 MiB stored), 0.12 s for an unchanged second run, byte-identical restore.",
+  deployment:
+    "`provision/setup.sh` installs `khs`, its configuration and two sandboxed systemd timers; `--harden` adds ufw for the LAN only, key-only SSH (skipped when no key is installed, rolled back if `sshd -t` rejects it) and automatic security updates. The Compose stack and the units are validated statically; CI also pulls every pinned image and validates the Caddyfile. Not yet run end to end on real home hardware.",
+  limitations: [
+    "Backups are not encrypted: the repository should live on an encrypted disk if it can leave the house.",
+    "Fixed-size chunks, so inserting data in the middle of a large file re-stores the rest of it.",
+    "No off-site target yet.",
+    "The containers and timers have been validated but not run on real hardware.",
+  ],
+  roadmap: [
+    "Off-site copy to an rclone remote, with encryption.",
+    "Content-defined chunking.",
+    "Scheduled restore drills.",
+  ],
+  contribution: "Designed and built for this portfolio, in its own repository.",
+  ledger: [
+    ["Backup, deduplication, restore and verify", "built", "56 tests; measured run on the build VM"],
+    ["Backup under the systemd unit's capabilities", "built", "Regression test with setpriv"],
+    ["Setup script: idempotent, dry run, SSH lockout guard", "built", "Tests against a scratch root"],
+    ["Compose stack, Caddyfile, systemd units", "partial", "Validated statically; not run on home hardware"],
+  ],
+};
+
+export const jtime = {
+  slug: "jtime",
+  title: "JTime",
+  summary:
+    "A JavaFX desktop app for planning projects and tracking how long tasks really take, with weekly and monthly time reports and CSV export. A university project I later hardened with tests, CI and data-safety fixes.",
+  status: "Open source",
+  categories: ["open-source"],
+  period: "2026",
+  role: "Developer: original app, then fixes, features and tests",
+  stack: ["Java 21", "JavaFX 21", "Gradle", "JUnit 5", "GitHub Actions"],
+  repoUrl: "https://github.com/kassarahmad/JTIME",
+  links: [],
+  featured: false,
+  problem:
+    "Estimates are only useful if you compare them with what actually happened. JTime keeps projects, tasks with an estimate, a calendar plan and the real time spent in one place, so the gap between the two is visible per project and per week.",
+  users: ["Students and freelancers who plan their own work."],
+  features: [
+    "Projects that can only be closed when every task is done, and then accept no new tasks.",
+    "Tasks with an estimate; completing one records the actual time and the date.",
+    "A calendar plan without duplicates; completed tasks can't be planned.",
+    "Reports per project (estimate, actual, deviation) and a time report for any range, with this-week and this-month shortcuts.",
+    "Export as text, or all tasks as CSV that spreadsheets open safely.",
+  ],
+  decisions: [
+    {
+      title: "Reading the code before adding to it",
+      body: "A review of the original version found data-loss bugs: planning changes were only written when something else triggered a save, an unreadable archive was silently replaced by an empty one and then overwritten, negative durations over an hour lost their hours in reports, and deleting a task left it in the calendar. Each now has a regression test.",
+    },
+    {
+      title: "Safe saving and loading",
+      body: "The archive is written to a temporary file and moved into place, so a crash can't corrupt it. Loading goes through an `ObjectInputFilter` that accepts only the app's own classes and the few JDK types they contain. An unreadable file is moved aside and reported, never overwritten.",
+    },
+    {
+      title: "Compatible with existing data",
+      body: "Completion dates were added as a new nullable field, so archives saved by version 1.0 still open; tasks completed before the change are counted separately in time reports instead of being dropped.",
+    },
+  ],
+  testing:
+    "20 JUnit 5 tests on the model, controllers, services and persistence, using the same wiring as the interface, a temporary archive and a fixed clock. Reintroducing each fixed bug makes a test fail. Maven Central wasn't reachable from the environment where the fixes were written, so the tests ran there through a minimal stand-in for the JUnit API, and the changed screen was type-checked against stubs of the JavaFX classes it uses. GitHub Actions runs the full Gradle build with real JUnit and JavaFX.",
+  deployment:
+    "Desktop application: `./gradlew run` with JDK 21. Data stays in a local file in the user's home directory.",
+  limitations: [
+    "Single user, local storage only.",
+    "The interface is in Italian and has no automated UI tests.",
+    "No running timer: actual time is entered when completing a task.",
+  ],
+  roadmap: ["Start/stop timer.", "SQLite storage with an import from the current archive.", "English interface."],
+  contribution:
+    "Original application written by Ahmad for a course at the University of Camerino; the 1.1 fixes, features, tests and CI are in the repository history.",
+  ledger: [
+    ["Fixes, time reports, CSV export", "built", "20 tests; old archives load"],
+    ["Full build with JavaFX in CI", "unknown", "Workflow added; result not checked from the build environment"],
+    ["Interface changes", "partial", "Type-checked against JavaFX stubs, not run"],
+  ],
+};

@@ -10,6 +10,8 @@ The source of my portfolio site and the projects it presents. Everything here is
 | [`projects/shipyard/`](projects/shipyard) | Production deployment on AWS EC2: Compose, Caddy, backups, CI/CD | Configuration and scripts tested; not deployed |
 | [`.github/workflows/`](.github/workflows) | CI, release and deploy pipelines | Written and parsed; not yet run on GitHub |
 
+Related repositories: [kassar-house-server](https://github.com/kassarahmad/kassar-house-server) (home server backups, health checks and services) and [JTIME](https://github.com/kassarahmad/JTIME) (desktop time tracking). [`profile/README.md`](profile/README.md) is the text for the GitHub profile page.
+
 Existing work (the Hyperlean RAG assistant, Buon Gusto, Prontix, Stepvia) lives in other places and is documented here as case studies; this repository doesn't contain their code.
 
 ## Run it

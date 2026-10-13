@@ -9,7 +9,15 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright")
 const REPO_URL = process.env.REPO_URL || null;
 let server, browser, BASE;
 const LANGS = ["en", "it", "fr", "ar"];
-const SLUGS = ["hyperlean-rag-assistant", "buongusto-aspio", "slotbook", "hostwatch", "prontix", "shipyard", "stepvia"];
+const { contentFor, withPublishedSource } = await import("../scripts/build.mjs");
+const DATA = (l) => withPublishedSource(contentFor(l), { repoUrl: process.env.REPO_URL || null }).projects;
+const SLUGS = DATA("en").map((p) => p.slug);
+const TOTAL = SLUGS.length;
+const titles = (l, cat) =>
+  DATA(l)
+    .filter((p) => p.categories.includes(cat))
+    .map((p) => p.title)
+    .sort();
 const PAGES = [
   "/",
   ...LANGS.flatMap((l) => [
@@ -61,28 +69,37 @@ test("every page loads without errors or CSP violations, and fits a phone screen
   }
 });
 
-test("project filters show matching projects, an explained empty state, and keep the choice in the URL", async () => {
+test("project filters show matching projects and keep the choice in the URL", async () => {
   const { page } = await open("/en/projects/");
-  const visible = () => page.locator("li.project-row:visible h2").allTextContents();
-  assert.equal((await visible()).length, 7);
+  const visible = async () =>
+    (await page.locator("li.project-row:visible h2").allTextContents()).map((t) => t.trim()).sort();
+  assert.equal((await visible()).length, TOTAL);
   await page.getByRole("button", { name: /^Cloud\/DevOps/ }).click();
-  assert.deepEqual((await visible()).sort(), ["Hostwatch", "RAG assistant for industrial cost estimation", "Shipyard"]);
+  assert.deepEqual(await visible(), titles("en", "cloud"));
+  assert.ok((await visible()).includes("kassar-house-server"));
   assert.match(page.url(), /category=cloud/);
   assert.equal(await page.getByRole("button", { name: /^Cloud\/DevOps/ }).getAttribute("aria-pressed"), "true");
   await page.getByRole("button", { name: /^Open Source/ }).click();
-  if (REPO_URL) {
-    // Built with a public repository: the projects whose code is in it are open source.
-    assert.deepEqual((await visible()).sort(), ["Hostwatch", "Shipyard", "Slotbook"]);
-  } else {
-    assert.equal((await visible()).length, 0);
-    await page.getByText("Nothing published as open source yet").waitFor();
-  }
+  // JTime and kassar-house-server are public repositories; the monorepo projects join once REPO_URL is set.
+  assert.deepEqual(await visible(), titles("en", "open-source"));
+  assert.ok(["JTime", "kassar-house-server"].every((t) => titles("en", "open-source").includes(t)));
   await page.goto(`${BASE}/en/projects/?category=ai`);
-  assert.deepEqual((await visible()).sort(), [
-    "Pizzeria Buon Gusto",
-    "Prontix",
-    "RAG assistant for industrial cost estimation",
-  ]);
+  assert.deepEqual(await visible(), ["Pizzeria Buon Gusto", "Prontix", "RAG assistant for industrial cost estimation"]);
+  await page.close();
+});
+
+test("a filter with no match explains itself and offers a way back", async () => {
+  // No category is empty with the current data, so the rows are emptied of categories to reach this state.
+  const { page, problems } = await open("/it/projects/");
+  await page.evaluate(() => document.querySelectorAll("li.project-row").forEach((r) => (r.dataset.categories = "")));
+  await page.locator('[data-filters] button[data-filter="frontend"]').click();
+  assert.equal(await page.locator("li.project-row:visible").count(), 0);
+  assert.equal((await page.locator("[data-empty-text]").textContent()).trim(), "Nessun progetto Frontend.");
+  assert.match(await page.locator("[data-count]").textContent(), /^0 /);
+  await page.locator("[data-empty] button").click();
+  assert.equal(await page.locator("li.project-row:visible").count(), TOTAL);
+  assert.equal(await page.locator("[data-empty]").isVisible(), false);
+  assert.deepEqual(problems, []);
   await page.close();
 });
 
@@ -90,7 +107,7 @@ test("without JavaScript every project is still listed", async () => {
   const ctx = await browser.newContext({ javaScriptEnabled: false });
   const page = await ctx.newPage();
   await page.goto(`${BASE}/it/projects/`);
-  assert.equal(await page.locator("li.project-row").count(), 7);
+  assert.equal(await page.locator("li.project-row").count(), TOTAL);
   assert.equal(await page.locator("[data-filters]").isVisible(), false, "filters stay hidden without JS");
   await ctx.close();
 });
@@ -191,7 +208,6 @@ test("each language's CV PDF is linked and served", async () => {
 });
 
 test("filters: every category in every language matches the data, survives refresh and back/forward", async () => {
-  const { contentFor, withPublishedSource } = await import("../scripts/build.mjs");
   const cats = ["full-stack", "backend", "frontend", "cloud", "ai", "open-source"];
   for (const l of LANGS) {
     const expected = Object.fromEntries(
@@ -207,7 +223,7 @@ test("filters: every category in every language matches the data, survives refre
     const visible = async () =>
       (await page.locator("li.project-row:visible h2").allTextContents()).map((s) => s.trim()).sort();
     const pressed = () => page.locator('[data-filters] button[aria-pressed="true"]').getAttribute("data-filter");
-    assert.equal((await visible()).length, 7, `${l}: all projects at start`);
+    assert.equal((await visible()).length, TOTAL, `${l}: all projects at start`);
     for (const c of cats) {
       // Direct navigation
       await page.goto(`${BASE}/${l}/projects/?category=${c}`);
@@ -233,19 +249,19 @@ test("filters: every category in every language matches the data, survives refre
     assert.equal(await pressed(), "backend");
     await page.goBack();
     assert.doesNotMatch(page.url(), /category=/);
-    assert.equal((await visible()).length, 7, `${l}: back to all`);
+    assert.equal((await visible()).length, TOTAL, `${l}: back to all`);
     await page.goForward();
     assert.deepEqual(await visible(), expected.backend, `${l}: forward`);
     // Empty state offers a way back to everything (only reachable while no category is empty-free)
     if (expected["open-source"].length === 0) {
       await page.locator('[data-filters] button[data-filter="open-source"]').click();
       await page.locator("[data-empty] button").click();
-      assert.equal((await visible()).length, 7, `${l}: show all from empty state`);
+      assert.equal((await visible()).length, TOTAL, `${l}: show all from empty state`);
       assert.doesNotMatch(page.url(), /category=/);
     }
     // Unknown categories fall back to all and are removed from the URL
     await page.goto(`${BASE}/${l}/projects/?category=nonsense`);
-    assert.equal((await visible()).length, 7);
+    assert.equal((await visible()).length, TOTAL);
     assert.doesNotMatch(page.url(), /category=/);
     assert.deepEqual(problems, [], l);
     await page.close();
@@ -259,7 +275,11 @@ test("filters: the HTML never contains empty-state text that contradicts the lis
   for (const l of LANGS) {
     await page.goto(`${BASE}/${l}/projects/?category=frontend`);
     assert.equal((await page.locator("[data-empty-text]").textContent()).trim(), "", l);
-    assert.match(await page.locator("[data-count]").textContent(), /7/, `${l}: count rendered without JS`);
+    assert.match(
+      await page.locator("[data-count]").textContent(),
+      new RegExp(String(TOTAL)),
+      `${l}: count rendered without JS`,
+    );
   }
   await ctx.close();
 });
@@ -380,3 +400,16 @@ test(
     }
   },
 );
+
+test("projects with their own public repository link to it in every language", async () => {
+  for (const l of LANGS) {
+    for (const [slug, repo] of [
+      ["jtime", "https://github.com/kassarahmad/JTIME"],
+      ["kassar-house-server", "https://github.com/kassarahmad/kassar-house-server"],
+    ]) {
+      const { page } = await open(`/${l}/projects/${slug}/`);
+      assert.equal((await page.locator(`a[href="${repo}"]`).count()) > 0, true, `${l} ${slug}`);
+      await page.close();
+    }
+  }
+});

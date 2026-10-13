@@ -9,6 +9,7 @@ const NON_TRANSLATABLE = new Set([
   "categories",
   "links",
   "repoPath",
+  "repoUrl",
   "featured",
   "period",
   "id",
