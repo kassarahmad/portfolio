@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { serve } from "../scripts/serve.mjs";
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
+// Set when dist/ was built with REPO_URL (source code public on GitHub).
+const REPO_URL = process.env.REPO_URL || null;
 let server, browser, BASE;
 const LANGS = ["en", "it", "fr", "ar"];
 const SLUGS = ["hyperlean-rag-assistant", "buongusto-aspio", "slotbook", "hostwatch", "prontix", "shipyard", "stepvia"];
@@ -68,8 +70,13 @@ test("project filters show matching projects, an explained empty state, and keep
   assert.match(page.url(), /category=cloud/);
   assert.equal(await page.getByRole("button", { name: /^Cloud\/DevOps/ }).getAttribute("aria-pressed"), "true");
   await page.getByRole("button", { name: /^Open Source/ }).click();
-  assert.equal((await visible()).length, 0);
-  await page.getByText("Nothing published as open source yet").waitFor();
+  if (REPO_URL) {
+    // Built with a public repository: the projects whose code is in it are open source.
+    assert.deepEqual((await visible()).sort(), ["Hostwatch", "Shipyard", "Slotbook"]);
+  } else {
+    assert.equal((await visible()).length, 0);
+    await page.getByText("Nothing published as open source yet").waitFor();
+  }
   await page.goto(`${BASE}/en/projects/?category=ai`);
   assert.deepEqual((await visible()).sort(), [
     "Pizzeria Buon Gusto",
@@ -184,13 +191,13 @@ test("each language's CV PDF is linked and served", async () => {
 });
 
 test("filters: every category in every language matches the data, survives refresh and back/forward", async () => {
-  const { contentFor } = await import("../scripts/build.mjs");
+  const { contentFor, withPublishedSource } = await import("../scripts/build.mjs");
   const cats = ["full-stack", "backend", "frontend", "cloud", "ai", "open-source"];
   for (const l of LANGS) {
     const expected = Object.fromEntries(
       cats.map((c) => [
         c,
-        contentFor(l)
+        withPublishedSource(contentFor(l), { repoUrl: REPO_URL })
           .projects.filter((p) => p.categories.includes(c))
           .map((p) => p.title)
           .sort(),
@@ -229,11 +236,13 @@ test("filters: every category in every language matches the data, survives refre
     assert.equal((await visible()).length, 7, `${l}: back to all`);
     await page.goForward();
     assert.deepEqual(await visible(), expected.backend, `${l}: forward`);
-    // Empty state offers a way back to everything
-    await page.locator('[data-filters] button[data-filter="open-source"]').click();
-    await page.locator("[data-empty] button").click();
-    assert.equal((await visible()).length, 7, `${l}: show all from empty state`);
-    assert.doesNotMatch(page.url(), /category=/);
+    // Empty state offers a way back to everything (only reachable while no category is empty-free)
+    if (expected["open-source"].length === 0) {
+      await page.locator('[data-filters] button[data-filter="open-source"]').click();
+      await page.locator("[data-empty] button").click();
+      assert.equal((await visible()).length, 7, `${l}: show all from empty state`);
+      assert.doesNotMatch(page.url(), /category=/);
+    }
     // Unknown categories fall back to all and are removed from the URL
     await page.goto(`${BASE}/${l}/projects/?category=nonsense`);
     assert.equal((await visible()).length, 7);
@@ -354,3 +363,20 @@ test("accessibility: every link, button and form control has an accessible name"
     }
   }
 });
+
+test(
+  "case studies link to their source on GitHub once the repository is public",
+  { skip: !REPO_URL && "built without REPO_URL" },
+  async () => {
+    for (const [slug, dir] of [
+      ["slotbook", "slotbook"],
+      ["hostwatch", "hostwatch"],
+      ["shipyard", "shipyard"],
+    ]) {
+      const { page } = await open(`/en/projects/${slug}/`);
+      const href = await page.locator(`a[href="${REPO_URL}/tree/main/projects/${dir}"]`).first().getAttribute("href");
+      assert.ok(href, slug);
+      await page.close();
+    }
+  },
+);
