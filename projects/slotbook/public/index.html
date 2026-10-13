@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slotbook</title>
+    <meta name="description" content="Book an appointment online." />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="bar">
+        <a class="brand" href="#/book">Slotbook</a>
+        <nav aria-label="Main">
+          <a href="#/book" data-nav="book">Book</a>
+          <a href="#/bookings" data-nav="bookings" data-auth>My bookings</a>
+          <a href="#/manage" data-nav="manage" data-role="staff owner" hidden>Manage</a>
+          <a href="#/account" data-nav="account" id="account-link">Sign in</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main" tabindex="-1">
+      <p class="loading">Loading…</p>
+    </main>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <footer class="foot"><a href="/docs">API documentation</a></footer>
+  </body>
+</html>

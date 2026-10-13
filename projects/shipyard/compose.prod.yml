@@ -1,0 +1,146 @@
+# Production stack for one Linux host (tested target: Ubuntu 24.04 on AWS EC2).
+#
+#   Internet ──443/80──► caddy ──edge──► slotbook-api ──internal──► postgres
+#                              └────────► hostwatch
+#
+# Only Caddy publishes ports. Postgres sits on an internal network with no
+# route to the Internet and no published port. Secrets are files under
+# ./secrets (created by scripts/make-secrets.sh, never committed).
+#
+# Images are pulled by immutable tag (git SHA) so a rollback is "start the
+# previous tag again". See docs/RUNBOOK.md.
+
+name: shipyard
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    <<: *hardening
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      MONITOR_DOMAIN: ${MONITOR_DOMAIN:?set MONITOR_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    depends_on:
+      slotbook-api:
+        condition: service_healthy
+    logging: *logging
+
+  slotbook-api:
+    image: ${REGISTRY:?set REGISTRY}/slotbook:${SLOTBOOK_TAG:?set SLOTBOOK_TAG}
+    restart: unless-stopped
+    init: true
+    <<: *hardening
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1000:1000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      PGHOST: postgres
+      PGUSER: slotbook
+      PGDATABASE: slotbook
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+      BUSINESS_TZ: ${BUSINESS_TZ:-Europe/Rome}
+      MIGRATE_ON_START: "false" # deploy.sh runs migrations explicitly, after a backup
+    secrets: [postgres_password, jwt_secret]
+    networks: [edge, internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 1.0
+    logging: *logging
+
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: slotbook
+      POSTGRES_DB: slotbook
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slotbook -d slotbook"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    shm_size: 128m
+    mem_limit: 512m
+    logging: *logging
+
+  hostwatch:
+    image: ${REGISTRY}/hostwatch:${HOSTWATCH_TAG:?set HOSTWATCH_TAG}
+    restart: unless-stopped
+    init: true
+    <<: *hardening
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1000:1000"
+    environment:
+      HOSTWATCH_DB: /data/hostwatch.db
+      HOSTWATCH_SESSION_SECRET_FILE: /run/secrets/hostwatch_session_secret
+      HOSTWATCH_PASSWORD_HASH_FILE: /run/secrets/hostwatch_password_hash
+      HOSTWATCH_AGENT_TOKENS_FILE: /run/secrets/hostwatch_agent_tokens
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+    secrets: [hostwatch_session_secret, hostwatch_password_hash, hostwatch_agent_tokens]
+    volumes:
+      - hostwatch-data:/data
+    networks: [edge]
+    mem_limit: 128m
+    logging: *logging
+
+networks:
+  edge: {}
+  internal:
+    internal: true # no route to the Internet
+
+volumes:
+  caddy-data: {}
+  caddy-config: {}
+  pg-data: {}
+  hostwatch-data: {}
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  jwt_secret:
+    file: ./secrets/jwt_secret
+  hostwatch_session_secret:
+    file: ./secrets/hostwatch_session_secret
+  hostwatch_password_hash:
+    file: ./secrets/hostwatch_password_hash
+  hostwatch_agent_tokens:
+    file: ./secrets/hostwatch_agent_tokens

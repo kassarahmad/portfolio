@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+dist/
+coverage/
+.DS_Store
+
+# Security findings for client systems: shared privately, never committed
+docs/private/
+__pycache__/
+*.pyc
+.venv/

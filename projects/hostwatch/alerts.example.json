@@ -1,0 +1,9 @@
+[
+  { "id": "cpu-high", "type": "threshold", "metric": "cpu", "above": 85, "forSec": 600, "severity": "warning", "label": "CPU above 85%" },
+  { "id": "mem-high", "type": "threshold", "metric": "mem", "above": 90, "forSec": 300, "severity": "warning", "label": "Memory above 90%" },
+  { "id": "load-high", "type": "threshold", "metric": "load1", "above": 8, "forSec": 300, "severity": "warning", "label": "Load above 8" },
+  { "id": "disk-high", "type": "threshold", "metric": "disk", "above": 85, "forSec": 0, "severity": "critical", "label": "Disk above 85%" },
+  { "id": "host-silent", "type": "stale", "afterSec": 90, "severity": "critical", "label": "No data for 90 seconds" },
+  { "id": "service-down", "type": "service", "severity": "critical", "label": "Service not active" },
+  { "id": "container-unhealthy", "type": "container", "severity": "warning", "label": "Container unhealthy or stopped" }
+]

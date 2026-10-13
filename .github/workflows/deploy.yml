@@ -1,0 +1,74 @@
+# Manual deploy to the production server. The "production" environment must be
+# configured in the repository settings with required reviewers: the job waits
+# for an approval before it can read the SSH secrets or touch the server.
+#
+# Required environment secrets: DEPLOY_HOST, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy (a released commit SHA)"
+        required: true
+      action:
+        description: "deploy or rollback"
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false # never interrupt a running deploy
+
+jobs:
+  production:
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://${{ vars.DOMAIN }}
+    steps:
+      - name: Check the tag exists in the registry
+        if: inputs.action == 'deploy'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || { echo "invalid tag"; exit 1; }
+          docker manifest inspect "ghcr.io/${{ github.repository_owner }}/slotbook:$TAG" > /dev/null
+
+      - name: Configure SSH (host key pinned, no TOFU)
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+
+      - name: Deploy or roll back
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          TAG: ${{ inputs.tag }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [[ "$ACTION" == rollback ]]; then
+            ssh -o StrictHostKeyChecking=yes "deploy@$HOST" /opt/shipyard/scripts/rollback.sh
+          else
+            ssh -o StrictHostKeyChecking=yes "deploy@$HOST" /opt/shipyard/scripts/deploy.sh "$TAG"
+          fi
+
+      - name: Smoke test from outside
+        run: |
+          for i in $(seq 1 10); do
+            curl -fsS "https://${{ vars.DOMAIN }}/api/v1/health" && exit 0
+            sleep 3
+          done
+          echo "::error::Health check failed after deploy. deploy.sh already attempted an automatic rollback; check the job log above."
+          exit 1
+
+      - name: Remove key
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

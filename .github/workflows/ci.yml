@@ -1,0 +1,155 @@
+# Runs on every push and pull request: lint, type-check, tests (unit,
+# integration against PostgreSQL, browser end-to-end), infra validation,
+# secret scanning, image builds and vulnerability scans.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: Portfolio site
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: site } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm run build
+      - run: npm test
+      - run: npx --yes playwright@1.56.1 install --with-deps chromium
+      - run: npm install --no-save --no-package-lock playwright@1.56.1
+      - run: npm run test:e2e
+
+  slotbook:
+    name: Slotbook
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: projects/slotbook } }
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:integration
+      - name: End-to-end (browser)
+        env:
+          PGDATABASE: postgres
+          JWT_SECRET: ci-only-jwt-secret-that-is-long-enough-1234
+          COOKIE_SECURE: "false"
+          PORT: "3000"
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+          npm run migrate && npm run seed:demo > /dev/null
+          (npm start > server.log 2>&1 &)
+          for i in $(seq 1 30); do curl -fs localhost:3000/api/v1/health && break; sleep 1; done
+          SLOTBOOK_URL=http://localhost:3000 npm run test:e2e
+      - if: failure()
+        run: tail -n 100 server.log || true
+
+  hostwatch:
+    name: Hostwatch
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: projects/hostwatch/server } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:agent
+      - run: pip install pyflakes==3.2.0 && python -m pyflakes ../agent
+
+  infra:
+    name: Shipyard and infrastructure
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: projects/shipyard } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -x scripts/*.sh tests/*.sh
+      - name: Ops script tests (fake docker)
+        run: tests/test_scripts.sh
+      - name: Validate production Compose file
+        run: |
+          cp .env.example .env && mkdir -p secrets
+          for s in postgres_password jwt_secret hostwatch_session_secret hostwatch_password_hash hostwatch_agent_tokens; do echo x > secrets/$s; done
+          docker compose -f compose.prod.yml config --quiet
+      - name: Validate Caddyfile
+        run: docker run --rm -e DOMAIN=a.example -e MONITOR_DOMAIN=b.example -e ACME_EMAIL=a@example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Lint workflows
+        working-directory: .
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  images:
+    name: Build and scan images
+    runs-on: ubuntu-24.04
+    needs: [slotbook, hostwatch]
+    strategy:
+      matrix:
+        include:
+          - { name: slotbook, context: projects/slotbook }
+          - { name: hostwatch, context: projects/hostwatch/server }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          load: true
+          tags: ${{ matrix.name }}:ci
+      - name: Scan for vulnerabilities (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.name }}:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan Dockerfile and config
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: ${{ matrix.context }}
+          exit-code: "1"

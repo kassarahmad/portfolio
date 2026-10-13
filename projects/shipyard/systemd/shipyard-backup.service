@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up the Slotbook database
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/opt/shipyard
+EnvironmentFile=-/opt/shipyard/backup.env
+ExecStart=/opt/shipyard/scripts/backup.sh scheduled
+Nice=10

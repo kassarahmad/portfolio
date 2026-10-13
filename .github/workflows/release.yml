@@ -1,0 +1,78 @@
+# On a version tag (v1.2.3): build both images once, tag them with the commit
+# SHA and the version, attach an SBOM and build provenance, push to GHCR, scan
+# them, and publish a GitHub release whose notes list the image digests.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write # build provenance attestation
+  attestations: write
+
+jobs:
+  images:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - { name: slotbook, context: projects/slotbook }
+          - { name: hostwatch, context: projects/hostwatch/server }
+    outputs:
+      slotbook: ${{ steps.out.outputs.slotbook }}
+      hostwatch: ${{ steps.out.outputs.hostwatch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ github.ref_name }}
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Scan the pushed image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - id: out
+        run: echo "${{ matrix.name }}=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: images
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package deployment bundle
+        run: tar -czf shipyard-${{ github.ref_name }}.tar.gz -C projects shipyard --exclude='shipyard/tests'
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          Images (deploy by SHA tag \`${{ github.sha }}\`):
+          - ghcr.io/${{ github.repository_owner }}/slotbook@${{ needs.images.outputs.slotbook }}
+          - ghcr.io/${{ github.repository_owner }}/hostwatch@${{ needs.images.outputs.hostwatch }}
+
+          Deploy with the "Deploy" workflow, or on the server: \`scripts/deploy.sh ${{ github.sha }}\`.
+          EOF
+          gh release create "${{ github.ref_name }}" shipyard-${{ github.ref_name }}.tar.gz --notes-file notes.md --verify-tag

@@ -1,0 +1,48 @@
+# /etc/systemd/system/hostwatch-agent.service
+# Install:
+#   sudo install -m 0755 hostwatch_agent.py /usr/local/bin/hostwatch-agent
+#   sudo install -m 0600 /dev/null /etc/hostwatch-agent.env   # then edit it (see below)
+#   sudo cp hostwatch-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now hostwatch-agent
+#
+# /etc/hostwatch-agent.env:
+#   HOSTWATCH_SERVER=https://monitor.example.com
+#   HOSTWATCH_TOKEN=<token from HOSTWATCH_AGENT_TOKENS for this host>
+#   HOSTWATCH_SERVICES=nginx.service,postgresql.service
+#   # Optional, read-only Docker access through a socket proxy:
+#   # HOSTWATCH_DOCKER_SOCKET=/run/docker-proxy.sock
+
+[Unit]
+Description=Hostwatch metrics agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/hostwatch-agent.env
+ExecStart=/usr/bin/python3 -u /usr/local/bin/hostwatch-agent
+Restart=always
+RestartSec=5
+
+# Least privilege: an unprivileged dynamic user that can read /proc and query
+# systemd, but can't write anywhere or gain privileges.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=64M
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target

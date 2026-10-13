@@ -1,0 +1,49 @@
+# Demo stack: the server plus two agents sending SIMULATED data (labelled as such
+# in the dashboard). Real monitoring runs the agent on each host via systemd.
+#
+#   cp server/.env.example server/.env   # fill in secrets; see README
+#   SIM_WEB_TOKEN=... SIM_DB_TOKEN=... docker compose up --build
+#
+# Nothing here mounts the Docker socket or host /proc into a container.
+
+services:
+  server:
+    build: ./server
+    init: true
+    restart: unless-stopped
+    env_file: ./server/.env
+    environment:
+      COOKIE_SECURE: "false"
+    volumes:
+      - hostwatch-data:/data
+    ports:
+      - "127.0.0.1:4000:4000"
+
+  sim-web:
+    build: ./agent
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      HOSTWATCH_SERVER: http://server:4000
+      HOSTWATCH_HOST: web-1
+      HOSTWATCH_TOKEN: ${SIM_WEB_TOKEN:?set SIM_WEB_TOKEN to web-1's token}
+      HOSTWATCH_SIMULATE: "1"
+      HOSTWATCH_SEED: "3"
+
+  sim-db:
+    build: ./agent
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      HOSTWATCH_SERVER: http://server:4000
+      HOSTWATCH_HOST: db-1
+      HOSTWATCH_TOKEN: ${SIM_DB_TOKEN:?set SIM_DB_TOKEN to db-1's token}
+      HOSTWATCH_SIMULATE: "1"
+      HOSTWATCH_SEED: "11"
+
+volumes:
+  hostwatch-data:

@@ -1,0 +1,8 @@
+# Netlify: base directory "site". Canonical URLs use SITE_URL, or Netlify's own URL
+# variable when SITE_URL is unset. Set REPO_URL once the repository is public. Security headers come from dist/_headers.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"

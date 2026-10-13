@@ -1,0 +1,36 @@
+# Caddy obtains and renews Let's Encrypt certificates automatically for both
+# names, redirects HTTP to HTTPS and serves HTTP/3.
+{
+	email {$ACME_EMAIL}
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$DOMAIN} {
+	import common
+	reverse_proxy slotbook-api:3000 {
+		health_uri /api/v1/health
+		health_interval 15s
+	}
+}
+
+{$MONITOR_DOMAIN} {
+	import common
+	# Agents post here over HTTPS; the dashboard is behind Hostwatch's own sign-in.
+	reverse_proxy hostwatch:4000 {
+		flush_interval -1 # stream Server-Sent Events without buffering
+	}
+}

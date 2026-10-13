@@ -1,0 +1,24 @@
+{
+  "name": "slotbook",
+  "version": "1.0.0",
+  "description": "Appointment booking API and web client for small service businesses, on PostgreSQL.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch --env-file=.env src/server.js",
+    "migrate": "node scripts/cli.js migrate",
+    "seed:demo": "node scripts/cli.js seed-demo",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --test \"tests/unit/**/*.test.js\"",
+    "test:integration": "node --test --test-concurrency=1 \"tests/integration/**/*.test.js\"",
+    "test:e2e": "node --test \"tests/e2e/**/*.test.js\"",
+    "lint": "npx --yes eslint@10.1.0 .",
+    "format:check": "npx --yes prettier@3.8.1 --check .",
+    "typecheck": "npm install --no-save --no-package-lock typescript@6.0.2 @types/node@22 && tsc -p jsconfig.json"
+  }
+}

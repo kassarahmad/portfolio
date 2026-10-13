@@ -1,0 +1,20 @@
+{
+  "name": "hostwatch-server",
+  "version": "1.0.0",
+  "description": "Hostwatch API, alert engine and live dashboard.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch --env-file=.env src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"tests/**/*.test.js\"",
+    "test:agent": "python3 -m unittest discover -s ../agent/tests",
+    "lint": "npx --yes eslint@10.1.0 .",
+    "format:check": "npx --yes prettier@3.8.1 --check .",
+    "typecheck": "npm install --no-save --no-package-lock typescript@6.0.2 @types/node@22 && tsc -p jsconfig.json"
+  }
+}
