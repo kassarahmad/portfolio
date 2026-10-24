@@ -39,13 +39,17 @@ function Set-EnvValue($key, $value) {
     [System.IO.File]::WriteAllLines($path, [string[]]$out, (New-Object System.Text.UTF8Encoding($false)))
 }
 function Download($url, $dest) {
+    # Scarica in "<file>.part" e rinomina solo a download completo:
+    # un download interrotto riprende da dove era rimasto e non viene scambiato per un file completo.
+    $part = "$dest.part"
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if ($curl) {
-        & curl.exe -L --fail --retry 3 -C - -o $dest $url
-        if ($LASTEXITCODE -ne 0) { throw "Download fallito: $url" }
+        & curl.exe -L --fail --retry 5 --retry-delay 3 -C - -o $part $url
+        if ($LASTEXITCODE -ne 0) { throw "Download fallito: $url (rilancia lo script per riprendere)" }
     } else {
-        Start-BitsTransfer -Source $url -Destination $dest
+        Start-BitsTransfer -Source $url -Destination $part
     }
+    Move-Item -Force $part $dest
 }
 
 # ---------------------------------------------------------------- 1. Audit
@@ -71,7 +75,7 @@ if ($smi) {
     $vramGB = [math]::Round([double]$parts[1].Trim() / 1024, 1)
     Ok "GPU: $($parts[0].Trim()) - VRAM $vramGB GB - driver $($parts[2].Trim())"
     $smiHeader = (& nvidia-smi) -join "`n"
-    if ($smiHeader -match "CUDA Version:\s*([\d.]+)") { Ok "Versione CUDA massima supportata dal driver: $($Matches[1])" }
+    if ($smiHeader -match "CUDA Version:\s*([\d.]+)") { $driverCuda = [version]$Matches[1]; Ok "Versione CUDA massima supportata dal driver: $($Matches[1])" }
 } else {
     Warn "nvidia-smi non trovato: installa/aggiorna il driver NVIDIA (https://www.nvidia.com/drivers). Senza GPU i modelli useranno la CPU."
 }
@@ -109,17 +113,27 @@ $serverExe = Get-ChildItem -Path (Join-Path $Root "tools") -Recurse -Filter "lla
 if ($serverExe) { Ok "Trovato $($serverExe.FullName)" }
 if (-not $SkipLlama -and (-not $serverExe -or (Ask "Vuoi aggiornare llama.cpp all'ultima versione?"))) {
     try {
-        $rel = Invoke-RestMethod "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest" -Headers @{ "User-Agent" = "ailocale-setup" }
-        $cands = @()
-        foreach ($a in $rel.assets) {
-            if ($a.name -match '^cudart') { continue }
-            if ($a.name -match 'win' -and $a.name -match 'cuda' -and $a.name -match 'x64' -and $a.name -match '\.zip$' -and $a.name -match 'cuda-?(\d+(\.\d+)?)') {
-                $cands += [pscustomobject]@{ Asset = $a; Ver = [version]($Matches[1] + $(if ($Matches[1] -notmatch '\.') { ".0" } else { "" })); VerText = $Matches[1] }
+        # "latest" non sempre contiene i pacchetti Windows: cerca nelle release recenti la prima che li ha.
+        $releases = Invoke-RestMethod "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" -Headers @{ "User-Agent" = "ailocale-setup" }
+        $rel = $null; $cands = @()
+        foreach ($r in $releases) {
+            $found = @()
+            foreach ($a in $r.assets) {
+                if ($a.name -match '^cudart') { continue }
+                if ($a.name -match 'win' -and $a.name -match 'cuda' -and $a.name -match 'x64' -and $a.name -match '\.zip$' -and $a.name -match 'cuda-?(\d+(\.\d+)?)') {
+                    $found += [pscustomobject]@{ Asset = $a; Ver = [version]($Matches[1] + $(if ($Matches[1] -notmatch '\.') { ".0" } else { "" })); VerText = $Matches[1] }
+                }
             }
+            if ($found.Count -gt 0) { $rel = $r; $cands = $found; break }
+        }
+        if ($cands.Count -gt 0 -and $driverCuda) {
+            # Stessa versione principale del driver (es. driver 13.x -> pacchetto CUDA 13.x)
+            $same = @($cands | Where-Object { $_.Ver.Major -le $driverCuda.Major })
+            if ($same.Count -gt 0) { $cands = $same }
         }
         if ($cands.Count -eq 0) {
-            Warn "Nessun pacchetto Windows CUDA trovato nella release $($rel.tag_name)."
-            Warn "Scaricalo a mano da https://github.com/ggml-org/llama.cpp/releases, estrailo in tools\llama.cpp e rilancia."
+            Warn "Nessun pacchetto Windows CUDA trovato nelle release recenti di llama.cpp."
+            Warn "Scaricalo a mano da https://github.com/ggml-org/llama.cpp/releases (llama-...-bin-win-cuda-13.x-x64.zip e cudart-...-win-cuda-13.x-x64.zip), estrai entrambi in tools\llama.cpp e rilancia."
         } else {
             $best = $cands | Sort-Object Ver -Descending | Select-Object -First 1
             Write-Host "  Release $($rel.tag_name): $($best.Asset.name) ($([math]::Round($best.Asset.size/1MB)) MB)"
@@ -130,7 +144,7 @@ if (-not $SkipLlama -and (-not $serverExe -or (Ask "Vuoi aggiornare llama.cpp al
                 $zip = Join-Path $env:TEMP $best.Asset.name
                 Download $best.Asset.browser_download_url $zip
                 Expand-Archive -Path $zip -DestinationPath $dir -Force
-                $cudart = $rel.assets | Where-Object { $_.name -match '^cudart' -and $_.name -match 'win' -and $_.name -match [regex]::Escape($best.VerText) } | Select-Object -First 1
+                $cudart = $rel.assets | Where-Object { $_.name -match '^cudart' -and $_.name -match 'win' -and $_.name -match 'x64' -and $_.name -match [regex]::Escape($best.VerText) } | Select-Object -First 1
                 if ($cudart) {
                     $zip2 = Join-Path $env:TEMP $cudart.name
                     Download $cudart.browser_download_url $zip2
