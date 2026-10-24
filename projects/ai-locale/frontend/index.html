@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Locale</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Ccircle cx='11' cy='13' r='3' fill='white'/%3E%3Ccircle cx='21' cy='13' r='3' fill='white'/%3E%3Ccircle cx='16' cy='22' r='3' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <div class="brand-name">AI Locale</div>
+        <div class="brand-sub" data-i18n="tagline">Team di agenti sul tuo PC</div>
+      </div>
+    </div>
+    <button class="btn primary block" id="newChat"><span class="plus">+</span> <span data-i18n="newChat">Nuova conversazione</span></button>
+    <input class="search" id="convSearch" type="search" data-i18n-placeholder="searchChats" placeholder="Cerca nelle conversazioni">
+    <nav class="conv-list" id="convList" aria-label="Conversazioni"></nav>
+    <nav class="main-nav" id="mainNav">
+      <button data-view="chat" class="active"><span class="ico">&#9673;</span><span data-i18n="navChat">Chat</span></button>
+      <button data-view="documents"><span class="ico">&#9636;</span><span data-i18n="navDocs">Documenti</span></button>
+      <button data-view="memory"><span class="ico">&#9672;</span><span data-i18n="navMemory">Memoria</span></button>
+      <button data-view="tools"><span class="ico">&#9874;</span><span data-i18n="navTools">Strumenti</span></button>
+      <button data-view="system" id="navSystem"><span class="ico">&#9638;</span><span data-i18n="navSystem">Sistema</span></button>
+      <button data-view="settings"><span class="ico">&#9881;</span><span data-i18n="navSettings">Impostazioni</span></button>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <!-- CHAT -->
+    <section class="view active" id="view-chat">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="toggleSidebar" aria-label="Menu">&#9776;</button>
+        <h1 class="conv-title" id="convTitle" data-i18n="newChat">Nuova conversazione</h1>
+        <div class="status-pill" id="llmStatus"><span class="dot"></span><span class="txt">…</span></div>
+        <button class="icon-btn" id="toggleRoom" data-i18n-title="agentRoom" title="Stanza degli agenti">&#9783;</button>
+      </header>
+      <div class="chat-layout">
+        <div class="chat-col">
+          <div class="messages" id="messages">
+            <div class="empty-state" id="emptyState">
+              <div class="orbit" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+              <h2 data-i18n="emptyTitle">Il tuo team di agenti è pronto</h2>
+              <p data-i18n="emptyText">Fai una richiesta: il Coordinatore la divide tra gli agenti, il Critico controlla il lavoro, tu approvi ogni azione sul PC.</p>
+              <div class="suggestions" id="suggestions"></div>
+            </div>
+          </div>
+          <form class="composer" id="composer">
+            <div class="collections" id="collectionChips"></div>
+            <div class="attach-preview" id="attachPreview"></div>
+            <div class="composer-row">
+              <label class="icon-btn attach-btn" data-i18n-title="attachImage" title="Allega immagini"><input type="file" id="attachInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>&#128206;</label>
+              <textarea id="input" rows="1" data-i18n-placeholder="placeholder" placeholder="Scrivi una richiesta… (Invio per inviare, Maiusc+Invio per andare a capo)"></textarea>
+              <button type="submit" class="btn primary send" id="sendBtn" data-i18n="send">Invia</button>
+              <button type="button" class="btn danger send hidden" id="stopBtn" data-i18n="stop">Ferma</button>
+            </div>
+          </form>
+        </div>
+        <aside class="room" id="room">
+          <div class="room-head">
+            <div class="seg room-tabs" id="roomTabs">
+              <button data-tab="office3d" class="on" data-i18n="tabOffice3d">Ufficio 3D</button>
+              <button data-tab="office" data-i18n="tabOffice">Ufficio 2D</button>
+              <button data-tab="log" data-i18n="tabLog">Cronologia</button>
+            </div>
+            <span class="room-stats" id="roomStats"></span>
+            <button class="icon-btn" id="expandRoom" data-i18n-title="expand" title="Allarga">&#10530;</button>
+          </div>
+          <div class="room-pane" id="pane-office3d">
+            <div class="office3d-root" id="office3d"></div>
+          </div>
+          <div class="room-pane" id="pane-office">
+            <div class="office-root" id="office"></div>
+          </div>
+          <div class="room-pane" id="pane-log">
+            <div class="roster" id="roster"></div>
+            <div class="timeline" id="timeline">
+              <p class="muted small" data-i18n="roomEmpty">Qui vedrai gli agenti pianificare, usare strumenti, consultarsi e revisionare il lavoro in tempo reale.</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- DOCUMENTI -->
+    <section class="view" id="view-documents">
+      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navDocs">Documenti</h1></header>
+      <div class="page">
+        <div class="card">
+          <h3 data-i18n="uploadTitle">Carica documenti</h3>
+          <p class="muted small" id="uploadHint"></p>
+          <div class="upload-row">
+            <input id="docCollection" class="input" data-i18n-placeholder="collection" placeholder="Raccolta" value="generale">
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="docFile" multiple hidden>
+              <span data-i18n="dropHere">Trascina qui i file o clicca per sceglierli</span>
+            </label>
+          </div>
+          <div id="uploadLog" class="upload-log"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3 data-i18n="indexed">Documenti indicizzati</h3>
+            <button class="btn small" id="reembedBtn" data-i18n="reembed">Calcola embedding mancanti</button>
+          </div>
+          <div class="table-wrap"><table class="table" id="docTable"></table></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="searchTest">Prova la ricerca</h3>
+          <form class="row" id="docSearchForm">
+            <input class="input grow" id="docSearchQ" data-i18n-placeholder="searchPlaceholder" placeholder="Cerca nei documenti…">
+            <button class="btn" data-i18n="search">Cerca</button>
+          </form>
+          <div id="docSearchResults"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEMORIA -->
+    <section class="view" id="view-memory">
+      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navMemory">Memoria</h1></header>
+      <div class="page">
+        <div class="card">
+          <h3 data-i18n="memoryTitle">Memoria persistente</h3>
+          <p class="muted small" data-i18n="memoryText">Informazioni che gli agenti conoscono in ogni conversazione. Gli agenti possono proporre di salvarne di nuove, solo con la tua approvazione.</p>
+          <form class="row" id="memForm">
+            <input class="input grow" id="memInput" data-i18n-placeholder="memoryAdd" placeholder="Aggiungi un'informazione…">
+            <button class="btn primary" data-i18n="add">Aggiungi</button>
+          </form>
+          <ul class="mem-list" id="memList"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- STRUMENTI -->
+    <section class="view" id="view-tools">
+      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navTools">Strumenti</h1></header>
+      <div class="page">
+        <div class="caps" id="caps"></div>
+        <div class="card">
+          <h3 data-i18n="toolsTitle">Strumenti degli agenti</h3>
+          <p class="muted small" data-i18n="toolsText">Ogni strumento ha un livello di rischio. Le azioni che eseguono codice, modificano file esistenti o inviano dati a siti richiedono sempre la tua approvazione.</p>
+          <div class="table-wrap"><table class="table" id="toolsTable"></table></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="rootsTitle">Cartelle autorizzate</h3>
+          <p class="muted small" data-i18n="rootsText">Gli agenti possono lavorare solo qui. Aggiungi cartelle (es. i tuoi progetti) con AILOCALE_ALLOWED_PATHS nel file .env, separate da punto e virgola.</p>
+          <ul class="roots" id="roots"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- SISTEMA -->
+    <section class="view" id="view-system">
+      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navSystem">Sistema</h1><span class="muted small" id="sysUpdated"></span></header>
+      <div class="page">
+        <div class="local-only-msg card hidden" id="adminDenied" data-i18n="adminLocal">Il pannello di amministrazione è disponibile solo dal PC su cui gira AI Locale.</div>
+        <div id="sysContent">
+          <div class="metrics" id="metrics"></div>
+          <div class="grid2">
+            <div class="card"><h3 data-i18n="services">Servizi</h3><div id="services"></div></div>
+            <div class="card"><h3 data-i18n="database">Database</h3><div id="dbStats"></div></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3 data-i18n="models">Modelli</h3><span class="muted small" id="modelsDir"></span></div>
+            <div id="models"></div>
+          </div>
+          <div class="grid2">
+            <div class="card">
+              <div class="card-head"><h3 data-i18n="backups">Backup</h3><button class="btn small" id="backupBtn" data-i18n="backupNow">Crea backup</button></div>
+              <div id="backups"></div>
+            </div>
+            <div class="card"><h3 data-i18n="errors">Errori recenti</h3><div id="errors"></div></div>
+          </div>
+          <div class="card">
+            <h3 data-i18n="auditTitle">Registro delle azioni degli agenti</h3>
+            <div class="table-wrap audit-wrap"><table class="table" id="audit"></table></div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <h3 data-i18n="logs">Log</h3>
+              <select id="logSource" class="input small-input"><option value="app">app</option><option value="chat">llama chat</option><option value="embed">llama embed</option></select>
+            </div>
+            <pre class="logs" id="logs"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- IMPOSTAZIONI -->
+    <section class="view" id="view-settings">
+      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navSettings">Impostazioni</h1></header>
+      <div class="page">
+        <div class="card">
+          <h3 data-i18n="appearance">Aspetto e lingua</h3>
+          <div class="form-grid">
+            <label data-i18n="theme">Tema</label>
+            <div class="seg" id="themeSeg"><button data-theme-val="dark" data-i18n="dark">Scuro</button><button data-theme-val="light" data-i18n="light">Chiaro</button></div>
+            <label data-i18n="language">Lingua</label>
+            <div class="seg" id="langSeg"><button data-lang="it">Italiano</button><button data-lang="en">English</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="teamSettings">Comportamento del team</h3>
+          <form id="settingsForm" class="form-grid"></form>
+          <div class="row end"><span class="muted small" id="settingsSaved"></span><button class="btn primary" id="saveSettings" data-i18n="save">Salva</button></div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="remoteTitle">Accesso da fuori casa</h3>
+          <p class="muted small" data-i18n="remoteText">Usa una VPN come Tailscale: non aprire porte sul router. Dall'esterno serve il token impostato in AILOCALE_API_TOKEN.</p>
+          <div id="remoteInfo"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="login hidden" id="login">
+  <form class="card login-card" id="loginForm">
+    <div class="logo big" aria-hidden="true"><span></span><span></span><span></span></div>
+    <h2>AI Locale</h2>
+    <p class="muted small" data-i18n="loginText">Accesso remoto: inserisci il token.</p>
+    <input class="input" type="password" id="tokenInput" autocomplete="current-password" placeholder="Token">
+    <button class="btn primary block" data-i18n="login">Entra</button>
+    <p class="error small" id="loginError"></p>
+  </form>
+</div>
+<div class="toast" id="toast"></div>
+</body>
+</html>

@@ -19,7 +19,7 @@ import {
 } from "../src/templates/pages.mjs";
 import * as base from "../src/content/profile.mjs";
 import { buongusto, hyperlean, prontix, stepvia } from "../src/content/existing-projects.mjs";
-import { hostwatch, houseServer, jtime, shipyard, slotbook } from "../src/content/new-projects.mjs";
+import { ailocale, hostwatch, houseServer, jtime, shipyard, slotbook } from "../src/content/new-projects.mjs";
 import { DEFAULT_LANG, LANGS, UI } from "../src/i18n/ui.mjs";
 import { localize } from "../src/i18n/localize.mjs";
 import it from "../src/i18n/it.mjs";
@@ -29,7 +29,7 @@ import ar from "../src/i18n/ar.mjs";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "dist");
 
-export const projects = [hyperlean, buongusto, slotbook, houseServer, hostwatch, prontix, shipyard, jtime, stepvia];
+export const projects = [hyperlean, buongusto, ailocale, slotbook, houseServer, hostwatch, prontix, shipyard, jtime, stepvia];
 const TRANSLATIONS = { it, fr, ar };
 
 /** The English base content as one tree, in the same shape as a translation file. */

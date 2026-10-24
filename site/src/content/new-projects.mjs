@@ -489,3 +489,135 @@ export const jtime = {
     ["Interface changes", "partial", "Type-checked against JavaFX stubs, not run"],
   ],
 };
+
+export const ailocale = {
+  slug: "ai-locale",
+  title: "AI Locale",
+  summary:
+    "A private multi-agent AI assistant on a laptop GPU: nine agents plan, work in parallel and review each other, with real tools that ask before anything risky.",
+  status: "Portfolio project",
+  categories: ["ai", "backend", "full-stack"],
+  period: "2026",
+  role: "Concept, requirements, architecture and security rules; implementation written with an AI coding assistant and reviewed by me",
+  stack: [
+    "Python 3",
+    "Starlette",
+    "llama.cpp",
+    "Qwen3-VL",
+    "SQLite",
+    "Server-Sent Events",
+    "Playwright",
+    "Tesseract OCR",
+    "three.js",
+    "PowerShell",
+  ],
+  repoPath: "projects/ai-locale",
+  links: [],
+  featured: true,
+  problem:
+    "Cloud assistants are powerful but send every document, file and question to someone else's servers, and a single chat window hides how an answer was produced. I wanted the opposite: an assistant that runs on my own Windows laptop (RTX 5070 Laptop, 8 GB of VRAM), can act on files, code and the web, never acts without permission, and makes its reasoning visible as a team of specialists whose every step can be inspected.",
+  users: [
+    "A developer who wants help with code, documents and research without sending private data to a cloud API.",
+    "Anyone evaluating multi-agent systems who wants to see what each agent is doing and why.",
+  ],
+  features: [
+    "Nine agents: a coordinator, researcher, programmer, analyst, writer, operator, web navigator, vision specialist and a critic. They share one local model, each with its own instructions and tool set.",
+    "Planning as JSON with dependencies; independent tasks run in parallel on llama.cpp's parallel slots; a shared blackboard and an ask-a-colleague tool for collaboration.",
+    "A critic reviews each result with the tool evidence and sends work back with concrete feedback.",
+    "Real tools: project files in authorised folders, Python and shell commands, Word, Excel, PowerPoint and PDF reading, web search, page reading and an automated Chromium browser.",
+    "Vision and OCR: image analysis with a multimodal model, scanned PDFs read with Tesseract or the vision model.",
+    "Local RAG over uploaded documents with file and page citations, persistent memory the user can edit, a live hardware dashboard, backups and an audit log of every tool call.",
+    "A 3D office in three.js where the agents walk to meetings, pass tasks and documents and react to approvals, driven only by real engine events.",
+  ],
+  screenshots: [
+    {
+      src: "/img/ailocale-office.webp",
+      w: 1009,
+      h: 607,
+      alt: "3D office with nine round robot agents at their desks around a meeting table, a whiteboard with notes, and a job bar showing three of four tasks completed.",
+      caption: "The 3D office during a run of the test suite's scripted model: the events are real, the model answers are scripted.",
+    },
+    {
+      src: "/img/ailocale-tools.webp",
+      w: 1600,
+      h: 1000,
+      alt: "Tools page listing each agent tool with its risk level, whether it needs approval and which agents may use it, under status cards for web, browser, vision and OCR.",
+      caption: "Every tool shows its risk level, its approval rule and the agents allowed to use it.",
+    },
+  ],
+  diagram: {
+    id: "al",
+    width: 780,
+    height: 250,
+    title: "AI Locale architecture",
+    nodes: [
+      { id: "ui", x: 20, y: 95, w: 160, h: 56, label: "Web UI, 3D office", sub: "events, approvals" },
+      { id: "orch", x: 240, y: 70, w: 200, h: 106, label: "Orchestrator", sub: "plan · parallel tasks · critic" },
+      { id: "tools", x: 510, y: 15, w: 160, h: 48, label: "Tools", sub: "files, web, browser, vision" },
+      { id: "llm", x: 510, y: 100, w: 160, h: 48, label: "llama-server", sub: "Qwen3-VL on the GPU", kind: "ext" },
+      { id: "db", x: 510, y: 185, w: 160, h: 48, label: "SQLite", sub: "runs, memory, vectors", kind: "store" },
+    ],
+    edges: [
+      { from: "ui", to: "orch", label: "REST + SSE", labelAt: [210, 114] },
+      { from: "orch", to: "tools", sides: ["right", "left"] },
+      { from: "orch", to: "llm", sides: ["right", "left"] },
+      { from: "orch", to: "db", sides: ["right", "left"] },
+    ],
+    caption:
+      "Every agent is the same local model with a different role. Tools run in the backend, never in the model, and risky ones wait for the user.",
+  },
+  decisions: [
+    {
+      title: "One model, many roles",
+      body: "Eight gigabytes of VRAM fit one 8B multimodal model, not nine. Agents are therefore roles: a system prompt and an allowed tool list over the same model. llama.cpp's parallel slots let two agents generate at the same time; the context is split between slots, so each agent receives summaries of the others' work rather than full transcripts.",
+    },
+    {
+      title: "The model asks, the backend decides",
+      body: "The model can only request a tool call. The backend checks that the agent may use that tool, resolves paths inside authorised folders, blocks destructive commands, and pauses running code, shell commands, overwrites and form submissions until the user approves the exact text shown. Nothing the model writes can grant it a new permission.",
+    },
+    {
+      title: "Web content is data, not instructions",
+      body: "Pages and search results are wrapped as untrusted content before an agent sees them, and the web tools and the browser refuse local and private addresses, also after redirects, so a page can't make an agent reach the local model server or the assistant's own API.",
+    },
+    {
+      title: "Animations only for things that happen",
+      body: "The 3D office has no idle choreography of its own: agents walk, type or celebrate only when the engine emits the matching event (plan, task, tool call, consultation, review, approval). Pausing the animation never pauses the real work.",
+    },
+  ],
+  code: {
+    caption: "The approval gate in the orchestrator",
+    lang: "python",
+    text: `needs = tool.requires_approval(args, tctx) if callable(tool.requires_approval) else tool.requires_approval
+if needs:
+    preview = tool.preview(args) if tool.preview else json.dumps(args, ensure_ascii=False)
+    if not await self.approvals.request(ctx, agent, name, preview, tid, self.settings.approval_timeout):
+        raise ToolError("L'utente NON ha approvato questa azione. Non riprovarla; prosegui senza.")`,
+  },
+  testing:
+    "58 automated tests run without a GPU by replacing the model with a deterministic scripted one: planning with dependencies, parallel execution, critic revisions, consultations, approvals granted and denied, cancellation and model outages; the HTTP API and its security rules; file tools with backups and forbidden paths; web parsing and SSRF protection; a real Chromium session against a local site (links, a form submission needing approval, a password field the agent must refuse); and real OCR of an image and a scanned PDF with Tesseract. The interface and the 3D office were checked in a headless browser, including a full recorded run.",
+  deployment:
+    "Runs on Windows 11 on the user's own machine: a PowerShell setup script checks the hardware, creates the Python environment and, after confirmation, downloads llama.cpp with CUDA, Qwen3-VL-8B with its vision projector, an embedding model and Chromium. The server listens on 127.0.0.1; remote use is meant to go through a VPN with a token, and the admin panel stays local-only.",
+  limitations: [
+    "An 8B local model makes more mistakes than large cloud models on long, multi-step tasks; large projects have to be split into smaller requests.",
+    "Code and shell commands run with the user's permissions after approval; there is no container sandbox yet.",
+    "Not yet run end to end with the real model on the target laptop; speed and answer quality are unmeasured.",
+    "No email, calendar or desktop-application automation.",
+  ],
+  roadmap: [
+    "Run and measure on the RTX 5070 laptop.",
+    "A sandboxed runner for generated code.",
+    "A database agent with read-only SQL by default.",
+    "Speech input and output with whisper.cpp.",
+  ],
+  contribution:
+    "Conceived and directed by Ahmad: requirements, multi-agent design, security rules and acceptance criteria, refined over several iterations. The code was written with an AI coding assistant; it is in `projects/ai-locale` with its tests.",
+  ledger: [
+    ["Planning, parallel tasks, critic revisions, consultations", "built", "Orchestrator tests with a scripted model"],
+    ["Approvals, authorised folders, blocked commands, SSRF", "built", "Tool and API tests"],
+    ["Automated browser: open, click, form submission with approval", "built", "Playwright test against a local site"],
+    ["OCR of scanned PDFs and images", "built", "Test with Tesseract"],
+    ["3D office driven by engine events", "partial", "Rendered in software WebGL; frame rate on the GPU not measured"],
+    ["Answers from the real model on the target laptop", "unknown", "Not yet run"],
+    ["Windows setup and start scripts", "unknown", "Written, not executed"],
+  ],
+};

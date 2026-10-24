@@ -1,0 +1,4 @@
+Metti qui i modelli in formato .gguf (scripts\setup.ps1 li scarica per te, previa conferma).
+Consigliati per RTX 5070 Laptop (8 GB VRAM):
+  - Chat:       Qwen3-8B-Q4_K_M.gguf               (~5.0 GB)  https://huggingface.co/Qwen/Qwen3-8B-GGUF
+  - Embedding:  nomic-embed-text-v1.5.Q8_0.gguf    (~146 MB)  https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF

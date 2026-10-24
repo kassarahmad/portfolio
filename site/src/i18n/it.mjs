@@ -42,6 +42,7 @@ export default {
         ["Database vettoriale Qdrant", L, "Hyperlean: collection per documenti, sviluppo e glossario"],
         ["Ingestion di documenti (PDF, Excel)", L, "Pipeline di estrazione e normalizzazione di Hyperlean"],
         ["Controllo di costi e abusi", L, "Quote su Redis in Hyperlean; limiti su Postgres in Buon Gusto"],
+        ["LLM locali e tool calling multi-agente", L, "AI Locale: llama.cpp, nove agenti, approvazioni"],
       ],
     },
     {
@@ -726,6 +727,89 @@ export default {
           "Workflow aggiunto; risultato non verificato dall'ambiente di sviluppo",
         ],
         ["Modifiche all'interfaccia", L, "Verificate nei tipi contro stub JavaFX, non eseguite"],
+      ],
+    },
+    "ai-locale": {
+      title: "AI Locale",
+      summary:
+        "Un assistente AI multi-agente e privato sulla GPU di un portatile: nove agenti pianificano, lavorano in parallelo e si revisionano, con strumenti reali che chiedono il permesso prima di ogni azione rischiosa.",
+      status: "Progetto del portfolio",
+      role: "Idea, requisiti, architettura e regole di sicurezza; implementazione scritta con un assistente AI per il codice e rivista da me",
+      problem:
+        "Gli assistenti nel cloud sono potenti ma mandano ogni documento, file e domanda sui server di qualcun altro, e una singola finestra di chat nasconde come nasce una risposta. Volevo il contrario: un assistente che gira sul mio portatile Windows (RTX 5070 Laptop, 8 GB di VRAM), può agire su file, codice e web, non agisce mai senza permesso e rende visibile il ragionamento come un team di specialisti di cui si può ispezionare ogni passo.",
+      users: [
+        "Uno sviluppatore che vuole aiuto su codice, documenti e ricerche senza mandare dati privati a un'API nel cloud.",
+        "Chi valuta i sistemi multi-agente e vuole vedere cosa fa ogni agente e perché.",
+      ],
+      features: [
+        "Nove agenti: coordinatore, ricercatore, programmatore, analista, scrittore, operatore, navigatore web, specialista di visione e critico. Condividono un solo modello locale, ognuno con istruzioni e strumenti propri.",
+        "Piano in JSON con dipendenze; i compiti indipendenti girano in parallelo sugli slot paralleli di llama.cpp; una lavagna condivisa e uno strumento per chiedere aiuto a un collega.",
+        "Un critico rivede ogni risultato insieme alle prove degli strumenti e rimanda indietro il lavoro con indicazioni concrete.",
+        "Strumenti reali: file di progetto nelle cartelle autorizzate, codice Python e comandi di shell, lettura di Word, Excel, PowerPoint e PDF, ricerca web, lettura di pagine e un browser Chromium automatizzato.",
+        "Visione e OCR: analisi di immagini con un modello multimodale, PDF scansionati letti con Tesseract o con il modello di visione.",
+        "RAG locale sui documenti caricati con citazione di file e pagina, memoria persistente modificabile dall'utente, pannello hardware dal vivo, backup e registro di ogni chiamata a uno strumento.",
+        "Un ufficio 3D in three.js dove gli agenti vanno alle riunioni, si passano compiti e documenti e reagiscono alle approvazioni, mosso solo da eventi reali del motore.",
+      ],
+      screenshots: [
+        {
+          alt: "Ufficio 3D con nove agenti robot rotondi alle scrivanie intorno a un tavolo riunioni, una lavagna con note e una barra della commessa con tre compiti su quattro completati.",
+          caption: "L'ufficio 3D durante un'esecuzione con il modello scriptato dei test: gli eventi sono reali, le risposte del modello sono scriptate.",
+        },
+        {
+          alt: "Pagina Strumenti con ogni strumento degli agenti, il suo livello di rischio, se richiede approvazione e quali agenti possono usarlo, sotto le schede di stato di web, browser, visione e OCR.",
+          caption: "Ogni strumento mostra il livello di rischio, la regola di approvazione e gli agenti che possono usarlo.",
+        },
+      ],
+      diagram: {
+        title: "Architettura di AI Locale",
+        caption:
+          "Ogni agente è lo stesso modello locale con un ruolo diverso. Gli strumenti girano nel backend, mai nel modello, e quelli rischiosi aspettano l'utente.",
+      },
+      decisions: [
+        {
+          title: "Un modello, molti ruoli",
+          body: "Otto gigabyte di VRAM contengono un modello multimodale da 8B, non nove. Gli agenti sono quindi ruoli: un prompt di sistema e un elenco di strumenti permessi sopra lo stesso modello. Gli slot paralleli di llama.cpp permettono a due agenti di generare nello stesso momento; il contesto è diviso tra gli slot, quindi ogni agente riceve riassunti del lavoro degli altri e non le conversazioni intere.",
+        },
+        {
+          title: "Il modello chiede, il backend decide",
+          body: "Il modello può solo richiedere una chiamata a uno strumento. Il backend controlla che l'agente possa usarlo, risolve i percorsi dentro le cartelle autorizzate, blocca i comandi distruttivi e mette in pausa codice, comandi di shell, sovrascritture e invii di moduli finché l'utente non approva il testo esatto mostrato. Niente di ciò che il modello scrive può dargli un nuovo permesso.",
+        },
+        {
+          title: "Il contenuto web è un dato, non un'istruzione",
+          body: "Pagine e risultati di ricerca vengono marcati come contenuto non attendibile prima che un agente li veda, e gli strumenti web e il browser rifiutano gli indirizzi locali e privati, anche dopo i reindirizzamenti, così una pagina non può far raggiungere a un agente il server del modello o l'API dell'assistente stesso.",
+        },
+        {
+          title: "Animazioni solo per ciò che succede",
+          body: "L'ufficio 3D non ha coreografie proprie: gli agenti camminano, scrivono o festeggiano solo quando il motore emette l'evento corrispondente (piano, compito, strumento, consultazione, revisione, approvazione). Mettere in pausa l'animazione non mette mai in pausa il lavoro vero.",
+        },
+      ],
+      code: { caption: "Il controllo delle approvazioni nell'orchestratore" },
+      testing:
+        "58 test automatici girano senza GPU sostituendo il modello con uno scriptato e deterministico: pianificazione con dipendenze, esecuzione in parallelo, revisioni del critico, consultazioni, approvazioni concesse e negate, annullamento e modello non raggiungibile; l'API HTTP e le sue regole di sicurezza; gli strumenti per i file con backup e percorsi vietati; il parsing del web e la protezione SSRF; una vera sessione Chromium su un sito locale (link, un invio di modulo che richiede approvazione, un campo password che l'agente deve rifiutare); e un vero OCR di un'immagine e di un PDF scansionato con Tesseract. L'interfaccia e l'ufficio 3D sono stati verificati in un browser headless, compresa un'esecuzione completa registrata.",
+      deployment:
+        "Gira su Windows 11 sul computer dell'utente: uno script PowerShell controlla l'hardware, crea l'ambiente Python e, dopo conferma, scarica llama.cpp con CUDA, Qwen3-VL-8B con il suo proiettore visivo, un modello di embedding e Chromium. Il server ascolta su 127.0.0.1; l'uso da remoto è previsto tramite VPN con token, e il pannello di amministrazione resta solo locale.",
+      limitations: [
+        "Un modello locale da 8B sbaglia più dei grandi modelli nel cloud nei compiti lunghi e in più passi; i progetti grandi vanno divisi in richieste più piccole.",
+        "Codice e comandi di shell girano con i permessi dell'utente dopo l'approvazione; non c'è ancora una sandbox a container.",
+        "Non ancora eseguito dall'inizio alla fine con il modello vero sul portatile di destinazione; velocità e qualità delle risposte non misurate.",
+        "Niente email, calendario o automazione di applicazioni desktop.",
+      ],
+      roadmap: [
+        "Esecuzione e misure sul portatile con RTX 5070.",
+        "Un esecutore isolato per il codice generato.",
+        "Un agente database con SQL in sola lettura per default.",
+        "Voce in ingresso e in uscita con whisper.cpp.",
+      ],
+      contribution:
+        "Ideato e diretto da Ahmad: requisiti, progettazione multi-agente, regole di sicurezza e criteri di accettazione, rifiniti in più iterazioni. Il codice è stato scritto con un assistente AI; si trova in `projects/ai-locale` insieme ai test.",
+      ledger: [
+        ["Pianificazione, compiti in parallelo, revisioni del critico, consultazioni", L, "Test dell'orchestratore con un modello scriptato"],
+        ["Approvazioni, cartelle autorizzate, comandi bloccati, SSRF", L, "Test degli strumenti e dell'API"],
+        ["Browser automatico: apertura, click, invio di moduli con approvazione", L, "Test Playwright su un sito locale"],
+        ["OCR di PDF scansionati e immagini", L, "Test con Tesseract"],
+        ["Ufficio 3D guidato dagli eventi del motore", L, "Renderizzato in WebGL software; fotogrammi al secondo sulla GPU non misurati"],
+        ["Risposte del modello vero sul portatile di destinazione", L, "Non ancora eseguito"],
+        ["Script di installazione e avvio per Windows", L, "Scritti, non eseguiti"],
       ],
     },
   },

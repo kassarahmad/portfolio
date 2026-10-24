@@ -252,6 +252,7 @@ test("open-source category: own repositories always, monorepo projects once REPO
   // Projects in their own public repositories are always open source; monorepo ones need REPO_URL.
   assert.deepEqual(os(withPublishedSource(c, { repoUrl: null })), ["jtime", "kassar-house-server"]);
   assert.deepEqual(os(withPublishedSource(c, { repoUrl: "https://github.com/x/y" })), [
+    "ai-locale",
     "hostwatch",
     "jtime",
     "kassar-house-server",

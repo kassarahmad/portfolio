@@ -49,6 +49,7 @@ export const skillGroups = [
       ["Qdrant vector database", "work", "Hyperlean: documents, dev and glossary collections"],
       ["Document ingestion (PDF, Excel)", "work", "Hyperlean extraction and normalisation pipeline"],
       ["Cost and abuse controls", "work", "Redis quotas at Hyperlean; Postgres limits at Buon Gusto"],
+      ["Local LLMs and multi-agent tool calling", "project", "AI Locale: llama.cpp, nine agents, approvals"],
     ],
   },
   {
