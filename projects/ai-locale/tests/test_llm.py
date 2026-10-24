@@ -121,6 +121,36 @@ class ClientTest(unittest.TestCase):
         with self.assertRaises(LLMError):
             self.run_async(go())
 
+    def test_context_overflow_compacts_and_retries(self):
+        sizes = []
+
+        def handler(request):
+            body = json.loads(request.content)
+            n = sum(len(m["content"]) for m in body["messages"])
+            sizes.append(n)
+            if n > 8000:
+                err = {"error": {"code": 400, "message": f"request ({n // 3} tokens) exceeds the available context "
+                                 f"size (2048 tokens), try increasing it", "type": "exceed_context_size_error"}}
+                return httpx.Response(400, json=err)
+            return httpx.Response(200, content=sse([{"choices": [{"delta": {"content": "ok"}}]}]),
+                                  headers={"content-type": "text/event-stream"})
+
+        async def go():
+            c = LLMClient("http://x/v1", "m", transport=httpx.MockTransport(handler))
+            msgs = [{"role": "system", "content": "Sei un agente."},
+                    {"role": "user", "content": "domanda"},
+                    {"role": "tool", "content": "A" * 30000}]
+            r = await c.chat(msgs, max_tokens=256)
+            r2 = await c.chat(msgs, max_tokens=256)  # il limite imparato evita il secondo errore
+            await c.aclose()
+            return r, r2, c
+        r, r2, c = self.run_async(go())
+        self.assertEqual(r.content, "ok")
+        self.assertEqual(r2.content, "ok")
+        self.assertEqual(c.context_tokens, 2048)
+        self.assertLessEqual(sizes[-1], 8000)
+        self.assertEqual(len(sizes), 3)  # errore, riprova riuscita, seconda chiamata subito riuscita
+
     def test_connect_error_message(self):
         def handler(request):
             raise httpx.ConnectError("refused", request=request)

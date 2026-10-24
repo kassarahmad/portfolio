@@ -7,6 +7,7 @@ chiamate agli strumenti come testo (<tool_call>{...}</tool_call>).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import uuid
@@ -164,12 +165,44 @@ def extract_json(text: str) -> Any:
     raise ValueError("nessun JSON valido nella risposta del modello")
 
 
+log = logging.getLogger("ailocale.llm")
+_CTX_RE = re.compile(r"request \((\d+) tokens\) exceeds the available context size \((\d+) tokens\)")
+_CUT = "\n[... testo omesso per stare nel contesto del modello ...]\n"
+
+
+def _text_len(m: dict) -> int:
+    c = m.get("content")
+    return len(c) if isinstance(c, str) else 0
+
+
+def compact_messages(messages: list[dict], target_chars: int, min_keep: int = 600) -> list[dict]:
+    """Accorcia i messaggi più lunghi (inizio + fine, con un segno al centro) finché il testo
+    totale sta in target_chars. Non tocca il prompt di sistema finché c'è altro da accorciare."""
+    out = [dict(m) for m in messages]
+    total = sum(_text_len(m) for m in out)
+    for _ in range(64):
+        if total <= target_chars:
+            break
+        order = sorted(range(len(out)), key=lambda i: (i == 0 and out[i].get("role") == "system", -_text_len(out[i])))
+        i = next((i for i in order if _text_len(out[i]) > min_keep + len(_CUT)), None)
+        if i is None:
+            break
+        text = out[i]["content"]
+        new_len = max(min_keep, len(text) - (total - target_chars))
+        head = int(new_len * 0.6)
+        tail = new_len - head
+        out[i]["content"] = text[:head] + _CUT + (text[-tail:] if tail > 0 else "")
+        total = sum(_text_len(m) for m in out)
+    return out
+
+
 class LLMClient:
     def __init__(self, base_url: str, model: str, api_key: str = "", timeout: float = 600,
                  transport: Any = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.force_vision = False  # forza la capacità visione se il server non la dichiara
+        self.context_tokens = 0    # contesto per richiesta, imparato dagli errori del server
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=5.0), headers=headers, transport=transport)
@@ -184,6 +217,31 @@ class LLMClient:
     async def chat(self, messages: list[dict], *, tools: list[dict] | None = None,
                    temperature: float = 0.4, json_mode: bool = False,
                    on_token: TokenCallback | None = None, max_tokens: int | None = None) -> ChatResult:
+        """Come _chat, ma se la richiesta supera il contesto del modello accorcia i messaggi e riprova."""
+        reserve = max_tokens or 1024
+        if self.context_tokens:
+            # ~3 caratteri per token: stima prudente per testo italiano/inglese e codice
+            budget = max(2000, (self.context_tokens - reserve) * 3)
+            messages = compact_messages(messages, budget)
+        for attempt in range(3):
+            try:
+                return await self._chat(messages, tools=tools, temperature=temperature, json_mode=json_mode,
+                                        on_token=on_token, max_tokens=max_tokens)
+            except LLMError as exc:
+                m = _CTX_RE.search(str(exc))
+                if not m or attempt == 2:
+                    raise
+                n_prompt, n_ctx = int(m.group(1)), int(m.group(2))
+                self.context_tokens = n_ctx
+                chars = sum(_text_len(x) for x in messages)
+                ratio = max(0.2, (n_ctx - reserve) / max(n_prompt, 1) * 0.85)
+                log.warning("richiesta di %s token oltre il contesto (%s): accorcio e riprovo", n_prompt, n_ctx)
+                messages = compact_messages(messages, int(chars * ratio))
+        raise LLMError("contesto del modello insufficiente")  # pragma: no cover
+
+    async def _chat(self, messages: list[dict], *, tools: list[dict] | None = None,
+                    temperature: float = 0.4, json_mode: bool = False,
+                    on_token: TokenCallback | None = None, max_tokens: int | None = None) -> ChatResult:
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
