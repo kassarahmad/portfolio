@@ -1,6 +1,7 @@
 import { applyI18n, getLang, setLang, t } from "./i18n.js";
 import { esc, renderMarkdown } from "./markdown.js";
 import { Office } from "./office.js";
+import { fmtBytes, highlight, icon, kindIcon, openArtifact } from "./viewer.js";
 
 // L'ufficio 3D (three.js, ~2 MB) si carica solo quando serve
 let office3dModule = null;
@@ -16,7 +17,10 @@ const state = {
   me: null, agents: {}, conversations: [], currentId: null, view: "chat",
   runId: null, source: null, collections: [], selected: new Set(), assistantEl: null, answer: "",
   agentStatus: {}, sysTimer: null, settingsMeta: null, office: null, rejected: {}, helpPending: {}, attachments: [],
+  projects: [], projectsById: {}, convProject: null, newProjectId: null, projectId: null, artKind: "", panelArtifact: null, prevTab: "log",
 };
+const PROJECT_COLORS = ["amber", "sage", "sky", "rose", "violet", "slate", "teal", "clay"];
+const pcolor = (c) => `var(--p-${PROJECT_COLORS.includes(c) ? c : "amber"})`;
 
 const store = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
@@ -44,11 +48,14 @@ function toast(msg, bad = false) {
   toast._t = setTimeout(() => el.classList.remove("show"), 2600);
 }
 
-const fmtBytes = (n) => {
-  if (n == null) return "–";
-  const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; let v = n;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`;
+const relTime = (ts) => {
+  const rtf = new Intl.RelativeTimeFormat(getLang(), { numeric: "auto", style: "short" });
+  const d = (Date.now() / 1000 - ts);
+  if (d < 60) return rtf.format(0, "second");
+  if (d < 3600) return rtf.format(-Math.round(d / 60), "minute");
+  if (d < 86400) return rtf.format(-Math.round(d / 3600), "hour");
+  if (d < 86400 * 30) return rtf.format(-Math.round(d / 86400), "day");
+  return fmtDate(ts);
 };
 const fmtDate = (ts) => new Date(ts * 1000).toLocaleString(getLang() === "it" ? "it-IT" : "en-GB", { dateStyle: "short", timeStyle: "short" });
 const initials = (name) => name.slice(0, 2).toUpperCase();
@@ -77,17 +84,27 @@ function refreshLangUI() {
   if (state.view === "settings") loadSettings();
 }
 
-function showView(view) {
+function showView(view, opts = {}) {
   state.view = view;
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
-  $$("#mainNav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  $("#sidebar").classList.remove("open");
+  $$(".sidebar [data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === view || (view === "project" && b.dataset.view === "projects")));
+  if (innerWidth <= 860) $("#sidebar").classList.remove("open");
   clearInterval(state.sysTimer);
   if (view === "documents") loadDocuments();
   if (view === "memory") loadMemory();
   if (view === "settings") loadSettings();
   if (view === "tools") loadTools();
+  if (view === "projects") loadProjects();
+  if (view === "project") loadProject(opts.id || state.projectId);
+  if (view === "artifacts") loadArtifactLibrary();
   if (view === "system") { loadSystem(true); state.sysTimer = setInterval(() => loadSystem(false), 3000); }
+  if (view !== "chat") $$("#convList .conv-item").forEach((el) => el.classList.remove("active"));
+}
+
+function toggleSidebar(force) {
+  if (innerWidth <= 860) { $("#sidebar").classList.toggle("open", force); return; }
+  const collapsed = $("#app").classList.toggle("sb-collapsed", force === undefined ? undefined : !force);
+  store.set("ailocale.sbCollapsed", collapsed ? "1" : "0");
 }
 
 // ---------------------------------------------------------------------------
@@ -99,11 +116,30 @@ async function loadConversations() {
   state.conversations = data.items;
   const list = $("#convList");
   list.innerHTML = "";
+  if (!data.items.length) { list.innerHTML = `<div class="conv-empty">${t(q ? "noResults" : "noConvs")}</div>`; return; }
+  const now = new Date();
+  const day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+  const groupOf = (c) => {
+    if (c.running) return "grpRunning";
+    if (c.updated_at >= day0) return "grpToday";
+    if (c.updated_at >= day0 - 86400) return "grpYesterday";
+    if (c.updated_at >= day0 - 7 * 86400) return "grpWeek";
+    if (c.updated_at >= day0 - 30 * 86400) return "grpMonth";
+    return "grpOlder";
+  };
+  let last = null;
   for (const c of data.items) {
+    const g = groupOf(c);
+    if (g !== last) { list.insertAdjacentHTML("beforeend", `<div class="sb-group">${t(g)}</div>`); last = g; }
+    const p = c.project_id ? state.projectsById[c.project_id] : null;
     const el = document.createElement("div");
-    el.className = `conv-item${c.id === state.currentId ? " active" : ""}`;
-    el.innerHTML = `<span class="t">${esc(c.title)}</span><button class="x" title="✕">✕</button>`;
+    el.className = `conv-item${c.id === state.currentId && state.view === "chat" ? " active" : ""}`;
+    el.tabIndex = 0;
+    el.setAttribute("role", "button");
+    el.title = p ? `${p.name} / ${c.title}` : c.title;
+    el.innerHTML = `${c.running ? `<span class="live"></span>` : `<span class="pdot" style="--pc:${p ? pcolor(p.color) : "transparent"}"></span>`}<span class="t">${esc(c.title)}</span><button class="x" title="${t("deleteConfirm")}">${icon("i-x", "s")}</button>`;
     el.addEventListener("click", () => openConversation(c.id));
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") openConversation(c.id); });
     el.addEventListener("dblclick", () => renameConversation(c));
     $(".x", el).addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -126,24 +162,46 @@ async function renameConversation(c) {
   loadConversations();
 }
 
-function newConversation() {
+function newConversation(projectId = null) {
   closeStream();
   state.currentId = null;
+  state.newProjectId = projectId;
+  setConvProject(projectId ? state.projectsById[projectId] : null);
   $("#convTitle").textContent = t("newChat");
   $("#messages").innerHTML = "";
   showEmpty();
   resetRoom();
+  closePanelArtifact();
   setBusy(false);
   showView("chat");
   loadConversations();
   $("#input").focus();
 }
 
+function setConvProject(p) {
+  state.convProject = p || null;
+  const b = $("#convProject");
+  $(".lbl", b).textContent = p ? p.name : t("noProject");
+  b.style.setProperty("--pc", p ? pcolor(p.color) : "transparent");
+  $("svg", b).classList.toggle("hidden", Boolean(p));
+  $(".pmark", b).classList.toggle("hidden", !p);
+}
+
 let emptyTpl = null;
+function greeting() {
+  const h = new Date().getHours();
+  const k = h < 5 ? "helloNight" : h < 13 ? "helloMorning" : h < 18 ? "helloAfternoon" : "helloEvening";
+  return `${esc(t(k))}, <em>${esc(t("helloAsk"))}</em>`;
+}
 function showEmpty() {
   const box = $("#messages");
   box.appendChild(emptyTpl.cloneNode(true));
   applyI18n(box);
+  $("#hello").innerHTML = greeting();
+  const p = state.convProject;
+  const ctxEl = $("#emptyCtx");
+  ctxEl.classList.toggle("hidden", !p);
+  if (p) { ctxEl.style.setProperty("--pc", pcolor(p.color)); $("span:last-child", ctxEl).textContent = `${t("inProjectCtx")} ${p.name}`; }
   renderSuggestions();
 }
 
@@ -152,12 +210,21 @@ async function openConversation(id) {
   showView("chat");
   const conv = await api(`/api/conversations/${id}`);
   state.currentId = id;
+  state.newProjectId = null;
+  if (conv.project) state.projectsById[conv.project.id] = { ...state.projectsById[conv.project.id], ...conv.project };
+  setConvProject(conv.project);
   $("#convTitle").textContent = conv.title;
   const box = $("#messages");
   box.innerHTML = "";
   if (!conv.messages.length) showEmpty();
-  for (const m of conv.messages) addMessage(m.role, m.content, m.attachments || []);
+  const byRun = {};
+  for (const a of conv.artifacts || []) (byRun[a.run_id] ||= []).push(a);
+  for (const m of conv.messages) {
+    const el = addMessage(m.role, m.content, m.attachments || []);
+    if (m.role === "assistant" && byRun[m.run_id]) { renderArtifactList(el, byRun[m.run_id]); delete byRun[m.run_id]; }
+  }
   resetRoom();
+  closePanelArtifact();
   loadConversations();
   const lastRun = [...conv.messages].reverse().find((m) => m.run_id)?.run_id;
   if (lastRun) {
@@ -166,6 +233,27 @@ async function openConversation(id) {
     else if (run) { for (const ev of run.events) handleEvent(ev, true); }
   }
   scrollBottom(true);
+}
+
+function renderArtifactList(msgEl, items, fresh = false) {
+  if (!items?.length) return;
+  $(".art-list", msgEl)?.remove();
+  const box = document.createElement("div");
+  box.className = `art-list${fresh ? " fresh" : ""}`;
+  box.innerHTML = `<div class="art-head">${icon("i-layers", "s")}${t("artifactsMade")} · ${items.length}</div>`;
+  for (const a of items.slice(0, 12)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "art-row";
+    b.innerHTML = `<span class="kind">${kindIcon(a.kind)}</span><span class="grow"><span class="name">${esc(a.title.split("/").pop())}</span><span class="sub">${esc(t(`kind_${a.kind}`))} · ${fmtBytes(a.size)}${a.title.includes("/") ? ` · ${esc(a.title.slice(0, a.title.lastIndexOf("/")))}` : ""}</span></span>${icon("i-right", "s go")}`;
+    b.addEventListener("click", () => openPanelArtifact(a.id));
+    box.appendChild(b);
+  }
+  (msgEl.querySelector(".bubble") || msgEl).after(box);
+}
+
+function highlightIn(root) {
+  $$("pre code[data-lang]", root).forEach((el) => { if (!el.dataset.hl) { el.innerHTML = highlight(el.textContent, el.dataset.lang); el.dataset.hl = "1"; } });
 }
 
 // ---------------------------------------------------------------------------
@@ -182,8 +270,9 @@ function addMessage(role, content, attachments = []) {
       $(".bubble", el).insertAdjacentHTML("afterbegin", `<div class="msg-images">${attachments.map((a) => `<img src="/api/uploads/${encodeURIComponent(a.split("/").pop())}" alt="">`).join("")}</div>`);
     }
   } else {
-    el.innerHTML = `<div class="avatar">AI</div><div class="bubble"></div>`;
+    el.innerHTML = `<div class="who-line"><span class="mark">${icon("i-mark")}</span><b>AI Locale</b></div><div class="bubble"></div>`;
     $(".bubble", el).innerHTML = renderMarkdown(content);
+    highlightIn(el);
   }
   $("#messages").appendChild(el);
   return el;
@@ -198,15 +287,18 @@ function setBusy(busy) {
   $("#sendBtn").classList.toggle("hidden", busy);
   $("#stopBtn").classList.toggle("hidden", !busy);
   $("#input").disabled = false;
+  updateSendState();
 }
+function updateSendState() { $("#sendBtn").disabled = !$("#input").value.trim(); }
 
 async function send(text) {
   text = text.trim();
   if (!text || state.runId) return;
   try {
     if (!state.currentId) {
-      const c = await api("/api/conversations", { method: "POST", body: {} });
+      const c = await api("/api/conversations", { method: "POST", body: { project_id: state.newProjectId } });
       state.currentId = c.id;
+      state.newProjectId = null;
     }
     const attachments = state.attachments.map((a) => a.name);
     addMessage("user", text, state.attachments.map((a) => a.path));
@@ -214,6 +306,7 @@ async function send(text) {
     state.attachments = [];
     renderAttachments();
     autoGrow();
+    updateSendState();
     scrollBottom(true);
     const { run_id: runId } = await api(`/api/conversations/${state.currentId}/messages`, {
       method: "POST", body: { content: text, collections: [...state.selected], attachments },
@@ -407,6 +500,8 @@ function handleEvent(ev, replay) {
         const b = $(".bubble", state.assistantEl);
         b.classList.remove("cursor");
         b.innerHTML = renderMarkdown(d.content);
+        highlightIn(b);
+        if (d.artifacts?.length) { renderArtifactList(state.assistantEl, d.artifacts, true); loadConversations(); }
         if (d.sources?.length) b.insertAdjacentHTML("beforeend", `<div class="sources">${d.sources.map((s) => s.url ? `<a class="source" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.filename)}</a>` : `<span class="source">${esc(s.filename)}${s.page ? `, p. ${s.page}` : ""}</span>`).join("")}</div>`);
         scrollBottom();
       }
@@ -425,7 +520,8 @@ function handleEvent(ev, replay) {
       const s = d.stats || {};
       const stats = `${s.seconds ?? "–"}${t("seconds")} · ${s.llm_calls ?? 0} ${t("calls")} · ${s.tool_calls ?? 0} ${t("tools")}${s.tokens_per_second ? ` · ${s.tokens_per_second} ${t("tokS")}` : ""}`;
       $("#roomStats").textContent = stats;
-      if (!replay && state.assistantEl) state.assistantEl.querySelector(".bubble").insertAdjacentHTML("beforeend", `<div class="msg-meta">${esc(stats)}</div>`);
+      const target = !replay ? state.assistantEl : [...$$("#messages .msg.assistant")].pop();
+      if (target && !$(".msg-meta", target)) $(".bubble", target).insertAdjacentHTML("beforeend", `<div class="msg-meta">${esc(stats)}</div>`);
       break;
     }
     default: break;
@@ -575,10 +671,8 @@ async function setRoomTab(tab) {
     } catch (err) { console.error(err); toast(t("no3d"), true); tab = "office"; }
   }
   $$("#roomTabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
-  $("#pane-office3d").classList.toggle("active", tab === "office3d");
-  $("#pane-office").classList.toggle("active", tab === "office");
-  $("#pane-log").classList.toggle("active", tab === "log");
-  store.set("ailocale.roomTab", tab);
+  ["office3d", "office", "log", "artifact"].forEach((p) => $(`#pane-${p}`).classList.toggle("active", tab === p));
+  if (tab !== "artifact") { state.prevTab = tab; store.set("ailocale.roomTab", tab); }
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +707,276 @@ async function attachFiles(files) {
   renderAttachments();
 }
 
+
+// ---------------------------------------------------------------------------
+// Artefatti: pannello nella chat, cassetto nelle altre pagine
+// ---------------------------------------------------------------------------
+const viewerOpts = (onClose) => ({ api, t, toast, onClose });
+
+async function openPanelArtifact(id) {
+  state.panelArtifact = id;
+  $("#artifactTab").classList.remove("hidden");
+  $(".chat-layout").classList.remove("room-hidden");
+  await setRoomTab("artifact");
+  await openArtifact($("#pane-artifact"), id, viewerOpts(closePanelArtifact));
+}
+
+function closePanelArtifact() {
+  if (!state.panelArtifact) return;
+  state.panelArtifact = null;
+  $("#artifactTab").classList.add("hidden");
+  $("#pane-artifact").innerHTML = "";
+  if ($("#roomTabs button.on")?.dataset.tab === "artifact" || !$("#roomTabs button.on")) setRoomTab(state.prevTab || "log");
+}
+
+function openDrawer(id) {
+  $("#drawerScrim").classList.add("open");
+  $("#artDrawer").classList.add("open");
+  openArtifact($("#artDrawer"), id, viewerOpts(closeDrawer));
+}
+function closeDrawer() {
+  $("#drawerScrim").classList.remove("open");
+  $("#artDrawer").classList.remove("open");
+  setTimeout(() => { if (!$("#artDrawer").classList.contains("open")) $("#artDrawer").innerHTML = ""; }, 400);
+}
+
+function artifactRow(a, { showProject = true, onOpen } = {}) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "list-row";
+  const name = a.title.split("/").pop();
+  const folder = a.title.includes("/") ? a.title.slice(0, a.title.lastIndexOf("/")) : "";
+  const proj = showProject && a.project_name ? `<span class="pchip" style="--pc:${pcolor(a.project_color)}"><i></i>${esc(a.project_name)}</span>` : "";
+  b.innerHTML = `<span class="kind">${kindIcon(a.kind)}</span><span class="grow"><span class="name">${esc(name)}</span><span class="sub">${esc(t(`kind_${a.kind}`))} · ${fmtBytes(a.size)}${folder ? ` · ${esc(folder)}` : ""}${a.conversation_title ? ` · ${esc(a.conversation_title)}` : ""}</span></span>${proj}<span class="when">${relTime(a.updated_at)}</span>`;
+  b.addEventListener("click", () => (onOpen || openDrawer)(a.id));
+  if (a.exists === false) b.style.opacity = ".55";
+  return b;
+}
+
+async function loadArtifactLibrary() {
+  const kinds = ["", "document", "code", "html", "data", "image", "archive"];
+  const seg = $("#artKinds");
+  if (!seg.childElementCount) {
+    seg.innerHTML = kinds.map((k) => `<button data-k="${k}">${k ? t(`kindsF_${k}`) : t("kind_all")}</button>`).join("");
+    $$("button", seg).forEach((b) => b.addEventListener("click", () => { state.artKind = b.dataset.k; loadArtifactLibrary(); }));
+  } else {
+    $$("button", seg).forEach((b) => { b.textContent = b.dataset.k ? t(`kindsF_${b.dataset.k}`) : t("kind_all"); });
+  }
+  $$("button", seg).forEach((b) => b.classList.toggle("on", b.dataset.k === state.artKind));
+  const q = $("#artSearch").value.trim();
+  const params = new URLSearchParams();
+  if (state.artKind) params.set("kind", state.artKind);
+  if (q) params.set("q", q);
+  const data = await api(`/api/artifacts?${params}`);
+  const box = $("#artLibrary");
+  box.innerHTML = "";
+  if (!data.items.length) { box.innerHTML = `<div class="empty"><h4>${t("noArtifacts")}</h4><p>${t("noArtifactsHint")}</p></div>`; return; }
+  data.items.forEach((a) => box.appendChild(artifactRow(a)));
+}
+
+// ---------------------------------------------------------------------------
+// Progetti
+// ---------------------------------------------------------------------------
+async function refreshProjects() {
+  try {
+    const data = await api("/api/projects");
+    state.projects = data.items;
+    state.projectsById = Object.fromEntries(data.items.map((p) => [p.id, p]));
+  } catch { /* ignora */ }
+}
+
+async function loadProjects() {
+  await refreshProjects();
+  const box = $("#projectList");
+  box.innerHTML = "";
+  for (const p of state.projects) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "project-card";
+    b.style.setProperty("--pc", pcolor(p.color));
+    b.innerHTML = `<span class="pm">${esc(p.name.trim()[0]?.toUpperCase() || "P")}</span><span class="nm">${esc(p.name)}</span><span class="ds">${esc(p.description || "")}</span><span class="mt"><span>${p.conversations} ${t("sessionsN")}</span><span>${p.artifacts} ${t("artifactsN")}</span><span>${relTime(p.updated_at)}</span></span>`;
+    b.addEventListener("click", () => { state.projectId = p.id; showView("project", { id: p.id }); });
+    box.appendChild(b);
+  }
+  const nb = document.createElement("button");
+  nb.type = "button";
+  nb.className = "project-card new";
+  nb.innerHTML = state.projects.length ? `${icon("i-plus", "l")}<span>${t("newProject")}</span>` : `${icon("i-folder", "l")}<span class="nm" style="font-size:17px">${t("noProjects")}</span><span class="ds">${t("noProjectsHint")}</span>`;
+  nb.addEventListener("click", () => projectDialog());
+  box.appendChild(nb);
+}
+
+function projectDialog(p = null) {
+  const dlg = $("#projectDialog");
+  const f = $("#projectForm");
+  $("#projectDialogTitle").textContent = p ? t("editProject") : t("newProject");
+  f.name.value = p?.name || "";
+  f.description.value = p?.description || "";
+  f.instructions.value = p?.instructions || "";
+  const cur = p?.color || PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length];
+  $("#swatches").innerHTML = PROJECT_COLORS.map((c) => `<label title="${c}"><input type="radio" name="color" value="${c}" ${c === cur ? "checked" : ""}><span style="--pc:${pcolor(c)}"></span></label>`).join("");
+  dlg.onclose = async () => {
+    if (dlg.returnValue !== "ok") return;
+    const body = { name: f.name.value.trim(), description: f.description.value.trim(), instructions: f.instructions.value.trim(), color: f.color.value };
+    if (!body.name) return;
+    try {
+      const saved = await api(p ? `/api/projects/${p.id}` : "/api/projects", { method: p ? "PATCH" : "POST", body });
+      await refreshProjects();
+      state.projectId = saved.id;
+      showView("project", { id: saved.id });
+      loadConversations();
+    } catch (err) { toast(err.message, true); }
+  };
+  dlg.returnValue = "";
+  dlg.showModal();
+  f.name.focus();
+}
+
+async function loadProject(id) {
+  if (!id) { showView("projects"); return; }
+  let p;
+  try { p = await api(`/api/projects/${id}`); } catch { showView("projects"); return; }
+  state.projectId = id;
+  state.projectsById[id] = { ...state.projectsById[id], ...p };
+  $("#projectCrumb").textContent = p.name;
+  const page = $("#projectPage");
+  page.style.setProperty("--pc", pcolor(p.color));
+  page.innerHTML = `
+    <div class="project-hero">
+      <span class="pm">${esc(p.name.trim()[0]?.toUpperCase() || "P")}</span>
+      <div class="grow"><h2>${esc(p.name)}</h2>${p.description ? `<p>${esc(p.description)}</p>` : ""}</div>
+      <div class="acts">
+        <button class="btn" data-edit>${icon("i-edit", "s")}${t("editProject")}</button>
+        <button class="icon-btn" data-del title="${t("deleteProject")}">${icon("i-trash")}</button>
+      </div>
+    </div>
+    <div class="project-grid">
+      <div>
+        <form class="project-start" data-start>
+          <input name="q" autocomplete="off" placeholder="${esc(t("projectStartPh"))}" aria-label="${esc(t("projectStartPh"))}">
+          <button class="send-btn" title="${t("start")}">${icon("i-up")}</button>
+        </form>
+        <div class="subtabs" role="tablist">
+          <button data-st="sessions" class="on">${t("sessions")} <span class="n">${p.conversations.length}</span></button>
+          <button data-st="artifacts">${t("artifactsTitle")} <span class="n">${p.artifacts.length}</span></button>
+        </div>
+        <div class="list" data-list></div>
+      </div>
+      <aside>
+        <div class="aside-block">
+          <h4>${t("instructions")}<button class="btn small ghost hidden" data-save-instr>${t("save")}</button></h4>
+          <textarea class="input" data-instr placeholder="${esc(t("noInstructions"))}">${esc(p.instructions || "")}</textarea>
+        </div>
+        <div class="aside-block">
+          <h4>${t("knowledge")}</h4>
+          <span class="hint">${t("knowledgeHint")}</span>
+          <label class="dropzone" data-drop><input type="file" multiple hidden data-file><span>${t("dropHere")}</span></label>
+          <div class="list" data-docs></div>
+        </div>
+        <div class="aside-block">
+          <h4>${t("folder")}<button class="icon-btn s" data-copy-path title="${t("copyPath")}">${icon("i-copy", "s")}</button></h4>
+          <div class="path">${esc(p.folder)}</div>
+          <span class="hint">${t("folderHint")}</span>
+        </div>
+      </aside>
+    </div>`;
+  const list = $("[data-list]", page);
+  const renderList = (which) => {
+    $$(".subtabs button", page).forEach((b) => b.classList.toggle("on", b.dataset.st === which));
+    list.innerHTML = "";
+    if (which === "sessions") {
+      if (!p.conversations.length) { list.innerHTML = `<div class="empty"><p>${t("noSessions")}</p></div>`; return; }
+      for (const c of p.conversations) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "list-row";
+        b.innerHTML = `<span class="kind">${c.running ? `<span class="live" style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>` : icon("i-chat", "s")}</span><span class="grow"><span class="name">${esc(c.title)}</span><span class="sub">${c.artifacts ? `${c.artifacts} ${t("artifactsN")}` : "&nbsp;"}</span></span><span class="when">${relTime(c.updated_at)}</span>`;
+        b.addEventListener("click", () => openConversation(c.id));
+        list.appendChild(b);
+      }
+    } else {
+      if (!p.artifacts.length) { list.innerHTML = `<div class="empty"><p>${t("noArtifacts")}</p></div>`; return; }
+      p.artifacts.forEach((a) => list.appendChild(artifactRow(a, { showProject: false })));
+    }
+  };
+  renderList("sessions");
+  $$(".subtabs button", page).forEach((b) => b.addEventListener("click", () => renderList(b.dataset.st)));
+  $("[data-start]", page).addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = e.target.q.value.trim();
+    newConversation(id);
+    if (q) send(q);
+  });
+  $("[data-edit]", page).addEventListener("click", () => projectDialog(p));
+  $("[data-del]", page).addEventListener("click", async () => {
+    if (!confirm(t("deleteProjectConfirm"))) return;
+    try { await api(`/api/projects/${id}`, { method: "DELETE" }); await refreshProjects(); showView("projects"); loadConversations(); }
+    catch (err) { toast(err.message, true); }
+  });
+  const ta = $("[data-instr]", page);
+  const saveBtn = $("[data-save-instr]", page);
+  ta.addEventListener("input", () => saveBtn.classList.toggle("hidden", ta.value === (p.instructions || "")));
+  saveBtn.addEventListener("click", async () => {
+    await api(`/api/projects/${id}`, { method: "PATCH", body: { instructions: ta.value } });
+    p.instructions = ta.value;
+    saveBtn.classList.add("hidden");
+    toast(t("saved"));
+  });
+  $("[data-copy-path]", page).addEventListener("click", () => navigator.clipboard?.writeText(p.folder).then(() => toast(t("copied"))));
+  const docsBox = $("[data-docs]", page);
+  const renderDocs = (docs) => {
+    docsBox.innerHTML = docs.length ? "" : `<span class="hint">${t("noFiles")}</span>`;
+    for (const d of docs) {
+      const row = document.createElement("div");
+      row.className = "list-row";
+      row.innerHTML = `<span class="kind">${icon("i-doc", "s")}</span><span class="grow"><span class="name">${esc(d.filename)}</span><span class="sub">${d.pages ? `${d.pages} p. · ` : ""}${fmtBytes(d.size)}</span></span><button class="icon-btn s" title="✕">${icon("i-x", "s")}</button>`;
+      $("button", row).addEventListener("click", async () => { if (!confirm(t("deleteDoc"))) return; await api(`/api/documents/${d.id}`, { method: "DELETE" }); loadProject(id); });
+      docsBox.appendChild(row);
+    }
+  };
+  renderDocs(p.documents);
+  const upload = async (files) => {
+    for (const f of files) {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("collection", p.collection);
+      try { await api("/api/documents", { method: "POST", body: fd }); }
+      catch (err) { toast(`${f.name}: ${err.message}`, true); }
+    }
+    loadProject(id);
+  };
+  const dz = $("[data-drop]", page);
+  $("[data-file]", page).addEventListener("change", (e) => upload([...e.target.files]));
+  ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
+  dz.addEventListener("drop", (e) => upload([...e.dataTransfer.files]));
+}
+
+function moveDialog() {
+  const dlg = $("#moveDialog");
+  const list = $("#moveList");
+  list.innerHTML = "";
+  const opts = [{ id: null, name: t("noProjectMove"), color: null }, ...state.projects];
+  for (const p of opts) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "list-row";
+    const cur = (state.convProject?.id || null) === p.id;
+    b.innerHTML = `<span class="kind" ${p.color ? `style="color:${pcolor(p.color)}"` : ""}>${p.id ? icon("i-folder", "s") : icon("i-chat", "s")}</span><span class="grow"><span class="name">${esc(p.name)}</span></span>${cur ? icon("i-check", "s") : ""}`;
+    b.addEventListener("click", async () => {
+      dlg.close();
+      if (!state.currentId) { state.newProjectId = p.id; setConvProject(p.id ? p : null); if ($("#emptyState")) { $("#messages").innerHTML = ""; showEmpty(); } return; }
+      try {
+        await api(`/api/conversations/${state.currentId}`, { method: "PATCH", body: { project_id: p.id } });
+        setConvProject(p.id ? p : null);
+        loadConversations();
+      } catch (err) { toast(err.message, true); }
+    });
+    list.appendChild(b);
+  }
+  dlg.showModal();
+}
+
 // ---------------------------------------------------------------------------
 // Strumenti
 // ---------------------------------------------------------------------------
@@ -640,11 +1004,11 @@ function renderSuggestions() {
   const box = $("#suggestions");
   if (!box) return;
   box.innerHTML = "";
-  ["sugg1", "sugg2", "sugg3", "sugg4"].forEach((k) => {
+  [["sugg1", "i-globe"], ["sugg2", "i-code"], ["sugg3", "i-search"], ["sugg4", "i-table"]].forEach(([k, ic]) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = t(k);
-    b.addEventListener("click", () => send(t(k)));
+    b.innerHTML = `${icon(ic)}<span>${esc(t(k))}</span>${icon("i-right", "s arrow")}`;
+    b.addEventListener("click", () => { $("#input").value = t(k); autoGrow(); updateSendState(); $("#input").focus(); });
     box.appendChild(b);
   });
 }
@@ -652,12 +1016,12 @@ function renderSuggestions() {
 async function loadCollections() {
   try {
     const data = await api("/api/documents");
-    state.collections = data.collections;
+    state.collections = data.collections.filter((c) => !c.startsWith("prj-"));
   } catch { state.collections = []; }
   const box = $("#collectionChips");
   box.innerHTML = "";
   if (!state.collections.length) return;
-  box.insertAdjacentHTML("beforeend", `<span class="chip-label">${t("useDocs")}</span>`);
+  box.insertAdjacentHTML("beforeend", `<span class="chip-label">${icon("i-book", "s")}</span>`);
   for (const c of state.collections) {
     const b = document.createElement("button");
     b.type = "button";
@@ -679,7 +1043,7 @@ async function loadDocuments() {
   $("#uploadHint").textContent = `${data.allowed_extensions.join(" ")} · max ${data.max_upload_mb} MB`;
   const tbl = $("#docTable");
   if (!data.items.length) { tbl.innerHTML = `<tr><td class="muted">${t("noDocs")}</td></tr>`; return; }
-  tbl.innerHTML = `<thead><tr><th>${t("file")}</th><th>${t("collection")}</th><th>${t("pages")}</th><th>${t("chunks")}</th><th>${t("embedding")}</th><th>${t("size")}</th><th>${t("date")}</th><th></th></tr></thead><tbody>${data.items.map((d) => `<tr><td>${esc(d.filename)}</td><td><span class="tag">${esc(d.collection)}</span></td><td>${d.pages ?? "–"}</td><td>${d.chunks}</td><td>${d.embedded ? `<span class="tag ok">${t("yes")}</span>` : `<span class="tag">${t("no")}</span>`}</td><td>${fmtBytes(d.size)}</td><td>${fmtDate(d.created_at)}</td><td><button class="btn small ghost" data-del="${d.id}">✕</button></td></tr>`).join("")}</tbody>`;
+  tbl.innerHTML = `<thead><tr><th>${t("file")}</th><th>${t("collection")}</th><th>${t("pages")}</th><th>${t("chunks")}</th><th>${t("embedding")}</th><th>${t("size")}</th><th>${t("date")}</th><th></th></tr></thead><tbody>${data.items.map((d) => `<tr><td>${esc(d.filename)}</td><td><span class="tag">${esc(d.collection.startsWith("prj-") ? (state.projectsById[d.collection.slice(4)]?.name || d.collection) : d.collection)}</span></td><td>${d.pages ?? "–"}</td><td>${d.chunks}</td><td>${d.embedded ? `<span class="tag ok">${t("yes")}</span>` : `<span class="tag">${t("no")}</span>`}</td><td>${fmtBytes(d.size)}</td><td>${fmtDate(d.created_at)}</td><td><button class="btn small ghost" data-del="${d.id}">✕</button></td></tr>`).join("")}</tbody>`;
   $$("[data-del]", tbl).forEach((b) => b.addEventListener("click", async () => {
     if (!confirm(t("deleteDoc"))) return;
     await api(`/api/documents/${b.dataset.del}`, { method: "DELETE" });
@@ -885,8 +1249,10 @@ function showLogin() { $("#login").classList.remove("hidden"); $("#tokenInput").
 // ---------------------------------------------------------------------------
 async function init() {
   setTheme(store.get("ailocale.theme", matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+  if (store.get("ailocale.sbCollapsed", "0") === "1" && innerWidth > 860) $("#app").classList.add("sb-collapsed");
   emptyTpl = $("#emptyState").cloneNode(true);
   refreshLangUI();
+  if ($("#hello")) $("#hello").innerHTML = greeting();
 
   state.me = await api("/api/me");
   if (!state.me.authenticated) { showLogin(); }
@@ -912,13 +1278,33 @@ async function init() {
     store.set("ailocale.roomWide", on ? "1" : "0");
   });
 
-  $("#newChat").addEventListener("click", newConversation);
+  $("#newChat").addEventListener("click", () => newConversation());
+  $("#brandHome").addEventListener("click", (e) => { e.preventDefault(); newConversation(); });
+  $("#collapseSidebar").addEventListener("click", () => toggleSidebar());
+  $("#convProject").addEventListener("click", moveDialog);
+  $("#newProjectBtn").addEventListener("click", () => projectDialog());
+  let artT;
+  $("#artSearch").addEventListener("input", () => { clearTimeout(artT); artT = setTimeout(loadArtifactLibrary, 220); });
+  $("#drawerScrim").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.key === "Escape" && $("#artDrawer").classList.contains("open")) { closeDrawer(); return; }
+    if (mod && e.shiftKey && e.key.toLowerCase() === "o") { e.preventDefault(); newConversation(); return; }
+    if (mod && !e.shiftKey && e.key.toLowerCase() === "b") { e.preventDefault(); toggleSidebar(); return; }
+    if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); if (innerWidth <= 860) toggleSidebar(true); $("#convSearch").focus(); }
+  });
   let searchT;
   $("#convSearch").addEventListener("input", () => { clearTimeout(searchT); searchT = setTimeout(loadConversations, 250); });
-  $$("#mainNav button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
-  $("#toggleRoom").addEventListener("click", () => $(".chat-layout").classList.toggle("room-hidden"));
-  if (innerWidth <= 1100) $(".chat-layout").classList.add("room-hidden");
-  $$("#toggleSidebar, [data-toggle-sidebar]").forEach((b) => b.addEventListener("click", () => $("#sidebar").classList.toggle("open")));
+  $$(".sidebar [data-view], .crumb[data-view]").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+  $("#toggleRoom").addEventListener("click", () => {
+    const hidden = $(".chat-layout").classList.toggle("room-hidden");
+    if (innerWidth > 1180) store.set("ailocale.roomHidden", hidden ? "1" : "0");
+  });
+  if (innerWidth <= 1180 || store.get("ailocale.roomHidden", "0") === "1") $(".chat-layout").classList.add("room-hidden");
+  $$("[data-toggle-sidebar]").forEach((b) => b.addEventListener("click", () => toggleSidebar(true)));
+  document.addEventListener("click", (e) => {
+    if (innerWidth <= 860 && $("#sidebar").classList.contains("open") && !e.target.closest("#sidebar, [data-toggle-sidebar]")) $("#sidebar").classList.remove("open");
+  });
 
   $("#attachInput").addEventListener("change", (e) => { attachFiles([...e.target.files]); e.target.value = ""; });
   $("#input").addEventListener("paste", (e) => {
@@ -931,7 +1317,7 @@ async function init() {
     if (imgs.length) { e.preventDefault(); attachFiles(imgs); }
   });
   const input = $("#input");
-  input.addEventListener("input", autoGrow);
+  input.addEventListener("input", () => { autoGrow(); updateSendState(); });
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(input.value); } });
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });
   $("#stopBtn").addEventListener("click", async () => { if (state.runId) await api(`/api/runs/${state.runId}/cancel`, { method: "POST" }).catch(() => {}); });
@@ -971,6 +1357,8 @@ async function init() {
   $$("#langSeg button").forEach((b) => b.addEventListener("click", () => { setLang(b.dataset.lang); refreshLangUI(); }));
   $("#saveSettings").addEventListener("click", saveSettings);
 
+  await refreshProjects();
+  setConvProject(null);
   await loadConversations();
   await loadCollections();
   pollStatus();

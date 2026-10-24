@@ -75,6 +75,21 @@ github.com/tesseract-ocr/tessdata e copialo in `C:\Program Files\Tesseract-OCR\t
 Per far lavorare gli agenti sui tuoi progetti reali aggiungi nel `.env`:
 `AILOCALE_ALLOWED_PATHS=C:\Users\Ahmad\Progetti`. Fuori da queste cartelle non possono leggere né scrivere.
 
+## Progetti, artefatti e sessioni
+
+- **Progetti**: nome, colore, descrizione e istruzioni per gli agenti. Ogni progetto ha una sua cartella di
+  lavoro (`data/workspace/progetti/<nome>`) e una sua base di conoscenza: i documenti caricati nella pagina del
+  progetto vengono consultati in ogni sessione del progetto.
+- **Artefatti**: i file creati o modificati dal team durante una risposta (documenti, codice, pagine HTML,
+  CSV/Excel, immagini, PDF, zip) vengono registrati e si aprono nel pannello accanto alla chat: anteprima delle
+  pagine HTML in un riquadro isolato (senza accesso all'app né alla rete), codice con numeri di riga, tabelle,
+  documenti con tipografia da lettura. La pagina **Artefatti** li raccoglie tutti, con filtri e ricerca.
+- **Sessioni**: le conversazioni nella barra laterale, raggruppate per data, con il colore del progetto e un
+  indicatore per quelle in corso. Una sessione si può spostare in un progetto dal titolo in alto.
+
+Scorciatoie: `Ctrl+Shift+O` nuova chat, `Ctrl+K` cerca sessioni, `Ctrl+B` mostra/nasconde la barra, `Esc` chiude
+il visualizzatore.
+
 ## Modalità autonoma
 
 In **Impostazioni → Modalità autonoma** le azioni rischiose (scrivere o sovrascrivere file, eseguire

@@ -31,7 +31,7 @@ export function renderMarkdown(src) {
       i++;
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
       i++;
-      out.push(`<pre><div class="code-head"><span>${esc(lang || "code")}</span><button class="copy-btn" data-copy>⧉</button></div><code>${esc(buf.join("\n"))}</code></pre>`);
+      out.push(`<pre><div class="code-head"><span>${esc(lang || "code")}</span><button type="button" class="copy-btn" data-copy><svg class="ic s"><use href="#i-copy"/></svg></button></div><code data-lang="${esc(lang.toLowerCase())}">${esc(buf.join("\n"))}</code></pre>`);
       continue;
     }
     const h = line.match(/^(#{1,4})\s+(.*)$/);

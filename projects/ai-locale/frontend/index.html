@@ -2,95 +2,197 @@
 <html lang="it" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>AI Locale</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Ccircle cx='11' cy='13' r='3' fill='white'/%3E%3Ccircle cx='21' cy='13' r='3' fill='white'/%3E%3Ccircle cx='16' cy='22' r='3' fill='white'/%3E%3C/svg%3E">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f0b44c'/%3E%3Cpath d='M8 19a8 8 0 0 1 16 0' fill='none' stroke='%231d1505' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='22.5' r='2.6' fill='%231d1505'/%3E%3C/svg%3E">
+  <link rel="preload" href="/static/vendor/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/office.css">
   <link rel="stylesheet" href="/static/styles.css">
   <script type="module" src="/static/app.js"></script>
 </head>
 <body>
+<!-- Icone: tratto 1.6, griglia 24 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M5 14.5a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="12" cy="17.6" r="2.3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h3.6l2 2.2h7.4a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3.5 8.5 4.5-8.5 4.5L3.5 8z"/><path d="m3.5 12.2 8.5 4.5 8.5-4.5"/><path d="m3.5 16.2 8.5 4.5 8.5-4.5"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 12.5a7.5 7.5 0 0 1-10.9 6.7L4.5 20.5l1.3-4.3A7.5 7.5 0 1 1 20 12.5z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4.5h10.5a2 2 0 0 1 2 2V19H7a2 2 0 0 1-2-2z"/><path d="M5 17a2 2 0 0 1 2-2h10.5"/><path d="M9 8.5h5"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24"><path d="M7 4.5h10a1.5 1.5 0 0 1 1.5 1.5v14l-6.5-4-6.5 4V6A1.5 1.5 0 0 1 7 4.5z"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.6 6.2a4 4 0 0 0 5.2 5.2l-8.6 8.6a2.1 2.1 0 0 1-3-3z"/><path d="M14.6 6.2 17 3.8l3.2 3.2-2.4 2.4"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3.5 12h3.6l2.4-6 4.6 12 2.4-6h4"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6"/></symbol>
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="m19 11.5-6.9 6.9a4.5 4.5 0 0 1-6.4-6.4l7.4-7.4a3 3 0 0 1 4.2 4.2l-7.3 7.3a1.5 1.5 0 0 1-2.1-2.1l6.7-6.7"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5v11M7 10.5l5 5 5-5M5 19.5h14"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M13.5 4.5h6v6M19.5 4.5l-8 8M17.5 13.5v4a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/><path d="M14 3.5v5h5M8.5 12.5h7M8.5 16h5"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 8-4 4 4 4M15 8l4 4-4 4M13.2 5.5l-2.4 13"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.5 5.2 3.5 8.5s-1.1 6.2-3.5 8.5c-2.4-2.3-3.5-5.2-3.5-8.5S9.6 5.8 12 3.5z"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m20.5 16-5-5-8.5 8.5"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="4.5" rx="1.2"/><path d="M5 9v9a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 18V9M10 13h4"/></symbol>
+    <symbol id="i-slides" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11" rx="2"/><path d="M12 15.5v4M8.5 19.5h7"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/><path d="M14 3.5v5h5"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l.8 11.5a1.5 1.5 0 0 0 1.5 1.5h6.4a1.5 1.5 0 0 0 1.5-1.5L17.5 7"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M15.5 5.5l3 3L8.5 18.5l-4 1 1-4z"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="m12 3.5 7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="m4.5 7.7 7.5 4.3 7.5-4.3M12 12v8.5"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="6" cy="17.5" r="1.6"/><path d="M10.5 6.5h9M10.5 12h9M10.5 17.5h6"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14.5 4.5h5v5M9.5 19.5h-5v-5M19.5 4.5l-6 6M4.5 19.5l6-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-home3d" viewBox="0 0 24 24"><path d="M4.5 11 12 4.5l7.5 6.5M6.5 9.5v9h11v-9"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 6v12l10-6z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  </defs>
+</svg>
+
 <div class="app" id="app">
-  <aside class="sidebar" id="sidebar">
-    <div class="brand">
-      <div class="logo" aria-hidden="true"><span></span><span></span><span></span></div>
-      <div>
-        <div class="brand-name">AI Locale</div>
-        <div class="brand-sub" data-i18n="tagline">Team di agenti sul tuo PC</div>
+  <aside class="sidebar" id="sidebar" aria-label="Navigazione">
+    <div class="sb-inner">
+      <div class="sb-head">
+        <a class="brand" href="#" id="brandHome"><span class="mark"><svg class="ic"><use href="#i-mark"/></svg></span><span class="brand-name">AI Locale</span></a>
+        <button class="icon-btn" id="collapseSidebar" data-i18n-title="hideSidebar" title="Nascondi barra (Ctrl+B)"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+      </div>
+      <div class="sb-actions">
+        <button class="nav-item new" id="newChat"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="newChat">Nuova chat</span><kbd class="kbd">Ctrl ⇧ O</kbd></button>
+        <button class="nav-item" data-view="projects"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="navProjects">Progetti</span></button>
+        <button class="nav-item" data-view="artifacts"><svg class="ic"><use href="#i-layers"/></svg><span data-i18n="navArtifacts">Artefatti</span></button>
+      </div>
+      <div class="sb-search">
+        <svg class="ic s"><use href="#i-search"/></svg>
+        <input id="convSearch" type="search" data-i18n-placeholder="searchChats" placeholder="Cerca sessioni" aria-label="Cerca sessioni">
+      </div>
+      <nav class="conv-list" id="convList" aria-label="Sessioni"></nav>
+      <div class="sb-foot">
+        <nav id="mainNav">
+          <button class="nav-item" data-view="documents"><svg class="ic"><use href="#i-book"/></svg><span data-i18n="navDocs">Documenti</span></button>
+          <button class="nav-item" data-view="memory"><svg class="ic"><use href="#i-memory"/></svg><span data-i18n="navMemory">Memoria</span></button>
+          <button class="nav-item" data-view="tools"><svg class="ic"><use href="#i-tool"/></svg><span data-i18n="navTools">Strumenti</span></button>
+          <button class="nav-item" data-view="system" id="navSystem"><svg class="ic"><use href="#i-pulse"/></svg><span data-i18n="navSystem">Sistema</span></button>
+          <button class="nav-item" data-view="settings"><svg class="ic"><use href="#i-gear"/></svg><span data-i18n="navSettings">Impostazioni</span></button>
+        </nav>
+        <div class="engine" id="llmStatus" title=""><span class="dot"></span><span class="txt">…</span></div>
       </div>
     </div>
-    <button class="btn primary block" id="newChat"><span class="plus">+</span> <span data-i18n="newChat">Nuova conversazione</span></button>
-    <input class="search" id="convSearch" type="search" data-i18n-placeholder="searchChats" placeholder="Cerca nelle conversazioni">
-    <nav class="conv-list" id="convList" aria-label="Conversazioni"></nav>
-    <nav class="main-nav" id="mainNav">
-      <button data-view="chat" class="active"><span class="ico">&#9673;</span><span data-i18n="navChat">Chat</span></button>
-      <button data-view="documents"><span class="ico">&#9636;</span><span data-i18n="navDocs">Documenti</span></button>
-      <button data-view="memory"><span class="ico">&#9672;</span><span data-i18n="navMemory">Memoria</span></button>
-      <button data-view="tools"><span class="ico">&#9874;</span><span data-i18n="navTools">Strumenti</span></button>
-      <button data-view="system" id="navSystem"><span class="ico">&#9638;</span><span data-i18n="navSystem">Sistema</span></button>
-      <button data-view="settings"><span class="ico">&#9881;</span><span data-i18n="navSettings">Impostazioni</span></button>
-    </nav>
   </aside>
 
   <main class="main">
     <!-- CHAT -->
     <section class="view active" id="view-chat">
       <header class="topbar">
-        <button class="icon-btn mobile-only" id="toggleSidebar" aria-label="Menu">&#9776;</button>
-        <h1 class="conv-title" id="convTitle" data-i18n="newChat">Nuova conversazione</h1>
-        <div class="status-pill" id="llmStatus"><span class="dot"></span><span class="txt">…</span></div>
-        <button class="icon-btn" id="toggleRoom" data-i18n-title="agentRoom" title="Stanza degli agenti">&#9783;</button>
+        <button class="icon-btn show-collapsed" data-toggle-sidebar data-i18n-title="showSidebar" title="Mostra barra"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <div class="crumbs">
+          <button class="crumb" id="convProject" data-i18n-title="moveToProject" title="Sposta in un progetto"><svg class="ic s"><use href="#i-folder"/></svg><span class="pmark hidden"></span><span class="lbl"></span></button>
+          <span class="sep">/</span>
+          <h1 class="conv-title" id="convTitle" data-i18n="newChat">Nuova chat</h1>
+        </div>
+        <button class="icon-btn" id="toggleRoom" data-i18n-title="togglePanel" title="Pannello del team"><svg class="ic"><use href="#i-panel"/></svg></button>
       </header>
       <div class="chat-layout">
         <div class="chat-col">
           <div class="messages" id="messages">
             <div class="empty-state" id="emptyState">
-              <div class="orbit" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-              <h2 data-i18n="emptyTitle">Il tuo team di agenti è pronto</h2>
-              <p data-i18n="emptyText">Fai una richiesta: il Coordinatore la divide tra gli agenti, il Critico controlla il lavoro, tu approvi ogni azione sul PC.</p>
+              <div class="ctx hidden" id="emptyCtx"><span class="pmark"></span><span></span></div>
+              <h2 class="hello" id="hello">Buongiorno.</h2>
+              <p class="lede" data-i18n="emptyText">Descrivi il lavoro: il Coordinatore lo divide tra gli agenti, il Critico lo controlla, e i file che nascono diventano artefatti.</p>
               <div class="suggestions" id="suggestions"></div>
             </div>
           </div>
           <form class="composer" id="composer">
-            <div class="collections" id="collectionChips"></div>
-            <div class="attach-preview" id="attachPreview"></div>
-            <div class="composer-row">
-              <label class="icon-btn attach-btn" data-i18n-title="attachImage" title="Allega immagini"><input type="file" id="attachInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>&#128206;</label>
-              <textarea id="input" rows="1" data-i18n-placeholder="placeholder" placeholder="Scrivi una richiesta… (Invio per inviare, Maiusc+Invio per andare a capo)"></textarea>
-              <button type="submit" class="btn primary send" id="sendBtn" data-i18n="send">Invia</button>
-              <button type="button" class="btn danger send hidden" id="stopBtn" data-i18n="stop">Ferma</button>
+            <div class="composer-box">
+              <div class="attach-preview" id="attachPreview"></div>
+              <textarea id="input" rows="1" data-i18n-placeholder="placeholder" placeholder="Chiedi al team…" aria-label="Messaggio"></textarea>
+              <div class="composer-tools">
+                <label class="icon-btn attach-btn" data-i18n-title="attachImage" title="Allega immagini"><input type="file" id="attachInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden><svg class="ic"><use href="#i-clip"/></svg></label>
+                <div class="grow"><div class="collections" id="collectionChips"></div></div>
+                <button type="submit" class="send-btn" id="sendBtn" data-i18n-title="send" title="Invia" disabled><svg class="ic"><use href="#i-up"/></svg></button>
+                <button type="button" class="send-btn stop hidden" id="stopBtn" data-i18n-title="stop" title="Ferma"><svg class="ic"><use href="#i-stop"/></svg></button>
+              </div>
             </div>
+            <p class="composer-note" data-i18n="composerNote">Tutto gira sul tuo PC. Gli agenti possono sbagliare: controlla i risultati importanti.</p>
           </form>
         </div>
-        <aside class="room" id="room">
+        <aside class="room" id="room" aria-label="Pannello del team">
           <div class="room-head">
-            <div class="seg room-tabs" id="roomTabs">
-              <button data-tab="office3d" class="on" data-i18n="tabOffice3d">Ufficio 3D</button>
-              <button data-tab="office" data-i18n="tabOffice">Ufficio 2D</button>
-              <button data-tab="log" data-i18n="tabLog">Cronologia</button>
+            <div class="tabs" id="roomTabs" role="tablist">
+              <button data-tab="log" role="tab"><svg class="ic s"><use href="#i-activity"/></svg><span data-i18n="tabLog">Attività</span></button>
+              <button data-tab="office3d" role="tab"><svg class="ic s"><use href="#i-cube"/></svg><span data-i18n="tabOffice3d">Ufficio 3D</span></button>
+              <button data-tab="office" role="tab"><svg class="ic s"><use href="#i-grid"/></svg><span data-i18n="tabOffice">2D</span></button>
+              <button data-tab="artifact" role="tab" class="hidden" id="artifactTab"><svg class="ic s"><use href="#i-layers"/></svg><span data-i18n="tabArtifact">Artefatto</span></button>
             </div>
             <span class="room-stats" id="roomStats"></span>
-            <button class="icon-btn" id="expandRoom" data-i18n-title="expand" title="Allarga">&#10530;</button>
-          </div>
-          <div class="room-pane" id="pane-office3d">
-            <div class="office3d-root" id="office3d"></div>
-          </div>
-          <div class="room-pane" id="pane-office">
-            <div class="office-root" id="office"></div>
+            <button class="icon-btn s" id="expandRoom" data-i18n-title="expand" title="Allarga"><svg class="ic s"><use href="#i-expand"/></svg></button>
           </div>
           <div class="room-pane" id="pane-log">
             <div class="roster" id="roster"></div>
-            <div class="timeline" id="timeline">
-              <p class="muted small" data-i18n="roomEmpty">Qui vedrai gli agenti pianificare, usare strumenti, consultarsi e revisionare il lavoro in tempo reale.</p>
-            </div>
+            <div class="timeline" id="timeline"><p data-i18n="roomEmpty">Qui vedrai il team pianificare, usare gli strumenti, consultarsi e rivedere il lavoro.</p></div>
           </div>
+          <div class="room-pane" id="pane-office3d"><div class="office3d-root" id="office3d"></div></div>
+          <div class="room-pane" id="pane-office"><div class="office-root" id="office"></div></div>
+          <div class="room-pane" id="pane-artifact"></div>
         </aside>
       </div>
     </section>
 
+    <!-- PROGETTI -->
+    <section class="view" id="view-projects">
+      <header class="topbar">
+        <button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <h1 data-i18n="navProjects">Progetti</h1>
+      </header>
+      <div class="page"><div class="page-inner">
+        <div class="page-head">
+          <div class="grow"><h2 data-i18n="projectsTitle">Progetti</h2><p data-i18n="projectsText">Ogni progetto ha le sue istruzioni, i suoi file e una cartella di lavoro: le sessioni al suo interno li conoscono già.</p></div>
+          <button class="btn primary" id="newProjectBtn"><svg class="ic s"><use href="#i-plus"/></svg><span data-i18n="newProject">Nuovo progetto</span></button>
+        </div>
+        <div class="project-list" id="projectList"></div>
+      </div></div>
+    </section>
+
+    <!-- PROGETTO -->
+    <section class="view" id="view-project">
+      <header class="topbar">
+        <button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <div class="crumbs"><button class="crumb" data-view="projects"><span data-i18n="navProjects">Progetti</span></button><span class="sep">/</span><h1 id="projectCrumb"></h1></div>
+      </header>
+      <div class="page"><div class="page-inner" id="projectPage"></div></div>
+    </section>
+
+    <!-- ARTEFATTI -->
+    <section class="view" id="view-artifacts">
+      <header class="topbar">
+        <button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <h1 data-i18n="navArtifacts">Artefatti</h1>
+      </header>
+      <div class="page"><div class="page-inner">
+        <div class="page-head"><div class="grow"><h2 data-i18n="artifactsTitle">Artefatti</h2><p data-i18n="artifactsText">Tutto quello che il team ha prodotto: documenti, codice, pagine, dati, immagini e archivi, con la sessione da cui sono nati.</p></div></div>
+        <div class="filters">
+          <div class="seg" id="artKinds"></div>
+          <label class="search"><svg class="ic s"><use href="#i-search"/></svg><input class="input" id="artSearch" type="search" data-i18n-placeholder="searchArtifacts" placeholder="Cerca per nome o percorso"></label>
+        </div>
+        <div class="list" id="artLibrary"></div>
+      </div></div>
+    </section>
+
     <!-- DOCUMENTI -->
     <section class="view" id="view-documents">
-      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navDocs">Documenti</h1></header>
-      <div class="page">
+      <header class="topbar"><button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button><h1 data-i18n="navDocs">Documenti</h1></header>
+      <div class="page"><div class="page-inner">
+        <div class="page-head"><div class="grow"><h2 data-i18n="navDocs">Documenti</h2><p data-i18n="docsText">I file che carichi qui restano sul PC: il Ricercatore li cerca e li cita pagina per pagina.</p></div></div>
         <div class="card">
           <h3 data-i18n="uploadTitle">Carica documenti</h3>
           <p class="muted small" id="uploadHint"></p>
@@ -118,47 +220,43 @@
           </form>
           <div id="docSearchResults"></div>
         </div>
-      </div>
+      </div></div>
     </section>
 
     <!-- MEMORIA -->
     <section class="view" id="view-memory">
-      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navMemory">Memoria</h1></header>
-      <div class="page">
+      <header class="topbar"><button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button><h1 data-i18n="navMemory">Memoria</h1></header>
+      <div class="page"><div class="page-inner">
+        <div class="page-head"><div class="grow"><h2 data-i18n="memoryTitle">Memoria</h2><p data-i18n="memoryText">Quello che il team sa di te in ogni sessione. Gli agenti possono proporre di aggiungere qualcosa, solo con approvazione.</p></div></div>
         <div class="card">
-          <h3 data-i18n="memoryTitle">Memoria persistente</h3>
-          <p class="muted small" data-i18n="memoryText">Informazioni che gli agenti conoscono in ogni conversazione. Gli agenti possono proporre di salvarne di nuove, solo con la tua approvazione.</p>
           <form class="row" id="memForm">
             <input class="input grow" id="memInput" data-i18n-placeholder="memoryAdd" placeholder="Aggiungi un'informazione…">
             <button class="btn primary" data-i18n="add">Aggiungi</button>
           </form>
           <ul class="mem-list" id="memList"></ul>
         </div>
-      </div>
+      </div></div>
     </section>
 
     <!-- STRUMENTI -->
     <section class="view" id="view-tools">
-      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navTools">Strumenti</h1></header>
-      <div class="page">
+      <header class="topbar"><button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button><h1 data-i18n="navTools">Strumenti</h1></header>
+      <div class="page"><div class="page-inner">
+        <div class="page-head"><div class="grow"><h2 data-i18n="toolsTitle">Strumenti</h2><p data-i18n="toolsText">Ogni strumento ha un livello di rischio. Le azioni che eseguono codice, modificano file o agiscono su siti chiedono approvazione.</p></div></div>
         <div class="caps" id="caps"></div>
-        <div class="card">
-          <h3 data-i18n="toolsTitle">Strumenti degli agenti</h3>
-          <p class="muted small" data-i18n="toolsText">Ogni strumento ha un livello di rischio. Le azioni che eseguono codice, modificano file esistenti o inviano dati a siti richiedono sempre la tua approvazione.</p>
-          <div class="table-wrap"><table class="table" id="toolsTable"></table></div>
-        </div>
+        <div class="card"><div class="table-wrap"><table class="table" id="toolsTable"></table></div></div>
         <div class="card">
           <h3 data-i18n="rootsTitle">Cartelle autorizzate</h3>
-          <p class="muted small" data-i18n="rootsText">Gli agenti possono lavorare solo qui. Aggiungi cartelle (es. i tuoi progetti) con AILOCALE_ALLOWED_PATHS nel file .env, separate da punto e virgola.</p>
+          <p class="muted small" data-i18n="rootsText">Gli agenti possono lavorare solo qui. Aggiungi cartelle con AILOCALE_ALLOWED_PATHS nel file .env, separate da punto e virgola.</p>
           <ul class="roots" id="roots"></ul>
         </div>
-      </div>
+      </div></div>
     </section>
 
     <!-- SISTEMA -->
     <section class="view" id="view-system">
-      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navSystem">Sistema</h1><span class="muted small" id="sysUpdated"></span></header>
-      <div class="page">
+      <header class="topbar"><button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button><h1 data-i18n="navSystem">Sistema</h1><span class="spacer"></span><span class="muted small" id="sysUpdated"></span></header>
+      <div class="page"><div class="page-inner">
         <div class="local-only-msg card hidden" id="adminDenied" data-i18n="adminLocal">Il pannello di amministrazione è disponibile solo dal PC su cui gira AI Locale.</div>
         <div id="sysContent">
           <div class="metrics" id="metrics"></div>
@@ -166,8 +264,8 @@
             <div class="card"><h3 data-i18n="services">Servizi</h3><div id="services"></div></div>
             <div class="card"><h3 data-i18n="database">Database</h3><div id="dbStats"></div></div>
           </div>
-          <div class="card">
-            <div class="card-head"><h3 data-i18n="models">Modelli</h3><span class="muted small" id="modelsDir"></span></div>
+          <div class="card" style="margin-top:16px">
+            <div class="card-head"><h3 data-i18n="models">Modelli</h3><span class="muted small mono" id="modelsDir"></span></div>
             <div id="models"></div>
           </div>
           <div class="grid2">
@@ -177,7 +275,7 @@
             </div>
             <div class="card"><h3 data-i18n="errors">Errori recenti</h3><div id="errors"></div></div>
           </div>
-          <div class="card">
+          <div class="card" style="margin-top:16px">
             <h3 data-i18n="auditTitle">Registro delle azioni degli agenti</h3>
             <div class="table-wrap audit-wrap"><table class="table" id="audit"></table></div>
           </div>
@@ -189,13 +287,14 @@
             <pre class="logs" id="logs"></pre>
           </div>
         </div>
-      </div>
+      </div></div>
     </section>
 
     <!-- IMPOSTAZIONI -->
     <section class="view" id="view-settings">
-      <header class="topbar"><button class="icon-btn mobile-only" data-toggle-sidebar>&#9776;</button><h1 data-i18n="navSettings">Impostazioni</h1></header>
-      <div class="page">
+      <header class="topbar"><button class="icon-btn show-collapsed" data-toggle-sidebar><svg class="ic"><use href="#i-sidebar"/></svg></button><h1 data-i18n="navSettings">Impostazioni</h1></header>
+      <div class="page"><div class="page-inner">
+        <div class="page-head"><div class="grow"><h2 data-i18n="navSettings">Impostazioni</h2></div></div>
         <div class="card">
           <h3 data-i18n="appearance">Aspetto e lingua</h3>
           <div class="form-grid">
@@ -215,14 +314,39 @@
           <p class="muted small" data-i18n="remoteText">Usa una VPN come Tailscale: non aprire porte sul router. Dall'esterno serve il token impostato in AILOCALE_API_TOKEN.</p>
           <div id="remoteInfo"></div>
         </div>
-      </div>
+      </div></div>
     </section>
   </main>
 </div>
 
+<!-- Visualizzatore fuori dalla chat -->
+<div class="drawer-scrim" id="drawerScrim"></div>
+<aside class="drawer" id="artDrawer" aria-label="Artefatto"></aside>
+
+<!-- Progetto: crea / modifica -->
+<dialog class="modal" id="projectDialog">
+  <form method="dialog" id="projectForm">
+    <h3 id="projectDialogTitle" data-i18n="newProject">Nuovo progetto</h3>
+    <label class="field"><span data-i18n="pName">Nome</span><input class="input" name="name" required maxlength="80" autocomplete="off"></label>
+    <label class="field"><span data-i18n="pDesc">Descrizione</span><input class="input" name="description" maxlength="500" autocomplete="off" data-i18n-placeholder="pDescPh" placeholder="A cosa serve, in una riga"></label>
+    <div class="field"><span data-i18n="pColor">Colore</span><div class="swatches" id="swatches"></div></div>
+    <label class="field"><span data-i18n="pInstr">Istruzioni per gli agenti</span><textarea class="input" name="instructions" rows="5" maxlength="8000" data-i18n-placeholder="pInstrPh" placeholder="Es.: rispondi in italiano, usa FastAPI e PostgreSQL, scrivi sempre i test."></textarea><span class="hint" data-i18n="pInstrHint">Valgono per ogni sessione del progetto.</span></label>
+    <div class="foot"><button class="btn ghost" value="cancel" formnovalidate data-i18n="cancel">Annulla</button><button class="btn primary" value="ok" data-i18n="save">Salva</button></div>
+  </form>
+</dialog>
+
+<!-- Sposta sessione in un progetto -->
+<dialog class="modal" id="moveDialog">
+  <form method="dialog">
+    <h3 data-i18n="moveToProject">Sposta in un progetto</h3>
+    <div class="list" id="moveList"></div>
+    <div class="foot"><button class="btn ghost" value="cancel" data-i18n="cancel">Annulla</button></div>
+  </form>
+</dialog>
+
 <div class="login hidden" id="login">
   <form class="card login-card" id="loginForm">
-    <div class="logo big" aria-hidden="true"><span></span><span></span><span></span></div>
+    <span class="mark"><svg class="ic"><use href="#i-mark"/></svg></span>
     <h2>AI Locale</h2>
     <p class="muted small" data-i18n="loginText">Accesso remoto: inserisci il token.</p>
     <input class="input" type="password" id="tokenInput" autocomplete="current-password" placeholder="Token">
@@ -230,6 +354,6 @@
     <p class="error small" id="loginError"></p>
   </form>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

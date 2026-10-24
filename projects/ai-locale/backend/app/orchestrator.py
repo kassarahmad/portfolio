@@ -23,6 +23,7 @@ import logging
 import re
 import time
 import uuid
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
@@ -30,6 +31,7 @@ from typing import Any, Callable
 from .agents import AGENTS, team_description
 from .db import Database, new_id
 from .llm import ChatModel, ChatResult, LLMError, extract_json
+from . import artifacts as artifacts_mod
 from .tools.builtin import ToolContext, truncate
 from .tools.registry import ToolError, ToolRegistry
 
@@ -101,6 +103,9 @@ class RunContext:
         self.capabilities: dict[str, bool] = {}
         self.consults = 0
         self.untrusted_seen = False  # il team ha letto contenuti dal web in questa esecuzione
+        self.project: dict | None = None   # progetto della conversazione, se c'è
+        self.workdir: Path | None = None   # cartella di lavoro (del progetto o generale)
+        self.touched: set[str] = set()     # file scritti con write_file (anche fuori dalla cartella di lavoro)
         self.stats = {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
                       "tool_calls": 0, "llm_seconds": 0.0}
         self._emitter = emitter
@@ -320,6 +325,20 @@ class Orchestrator:
         ctx.track(r)
         return r
 
+    @staticmethod
+    def _project_block(ctx: RunContext) -> str:
+        p = ctx.project
+        if not p:
+            return ""
+        out = f"\nPROJECT: {p['name']}"
+        if p.get("description"):
+            out += f" - {truncate(p['description'], 400)}"
+        if p.get("instructions"):
+            out += f"\nProject instructions from the user (follow them):\n{truncate(p['instructions'], 3000)}"
+        out += ("\nWork in the project's folder: relative paths are inside it. Files you create there are saved "
+                "as the project's artifacts.\n")
+        return out
+
     def _memory_block(self) -> str:
         mems = self.db.list_memories()[:15]
         if not mems:
@@ -346,7 +365,7 @@ class Orchestrator:
                f"User request:\n{ctx.user_message}"
         messages = [{"role": "system", "content": planner_prompt(ctx.tunables["max_tasks"], bool(ctx.collections),
                                                                  ctx.capabilities, ctx.attachments)
-                     + "\n" + self._memory_block()},
+                     + "\n" + self._memory_block() + self._project_block(ctx)},
                     {"role": "user", "content": self._nothink(ctx, user)}]
         try:
             r = await self._chat(ctx, messages, json_mode=True, temperature=0.2)
@@ -511,7 +530,7 @@ class Orchestrator:
         if feedback:
             user += (f"\n\nYour previous result:\n{truncate(task.result, 3000)}\n\n"
                      f"The Critic rejected it. Feedback:\n{feedback}\nProduce an improved, complete result.")
-        messages: list[dict] = [{"role": "system", "content": self._agent_system(task.agent)},
+        messages: list[dict] = [{"role": "system", "content": self._agent_system(task.agent) + self._project_block(ctx)},
                                 {"role": "user", "content": self._nothink(ctx, user)}]
         schemas = self.tools.schemas(spec.tools)
         steps = int(ctx.tunables.get("max_tool_steps", 6))
@@ -657,7 +676,7 @@ class Orchestrator:
         else:
             system = SYNTH_PROMPT.format(today=_today(), memory=self._memory_block(),
                                          blackboard=ctx.blackboard.summary(max_chars=9000, per_entry=3500))
-        messages = [{"role": "system", "content": system}, *self._history(ctx),
+        messages = [{"role": "system", "content": system + self._project_block(ctx)}, *self._history(ctx),
                     {"role": "user", "content": self._nothink(ctx, ctx.user_message)}]
 
         async def on_token(tok: str) -> None:
@@ -771,6 +790,17 @@ class RunManager:
                 state.cond.notify_all()
 
         ctx = RunContext(run_id, conversation_id, message, self.db.get_tunables(), collections, emitter, attachments)
+        ws = self.orch.settings.workspace_dir
+        ctx.workdir = ws
+        project = self.db.get_project(conv["project_id"]) if conv and conv.get("project_id") else None
+        if project:
+            ctx.project = project
+            ctx.workdir = artifacts_mod.project_dir(ws, project)
+            ctx.workdir.mkdir(parents=True, exist_ok=True)
+            coll = artifacts_mod.project_collection(project["id"])
+            if coll not in ctx.collections and self.db.one("SELECT 1 AS x FROM documents WHERE collection=?", (coll,)):
+                ctx.collections = [*ctx.collections, coll]
+            self.db.touch_project(project["id"])
         state.task = asyncio.create_task(self._run(ctx, state))
         return run_id
 
@@ -790,9 +820,10 @@ class RunManager:
         if stats["llm_seconds"] > 0 and stats["completion_tokens"]:
             stats["tokens_per_second"] = round(stats["completion_tokens"] / stats["llm_seconds"], 1)
         try:
+            arts = self.register_artifacts(ctx)
             if status == "completed":
                 self.db.add_message(ctx.conversation_id, "assistant", answer, ctx.run_id)
-                await ctx.emit("final", content=answer, sources=used_sources(answer, ctx.sources))
+                await ctx.emit("final", content=answer, sources=used_sources(answer, ctx.sources), artifacts=arts)
             else:
                 self.db.add_message(ctx.conversation_id, "assistant", f"**[{status}]** {error}", ctx.run_id)
                 await ctx.emit("error", message=error, status=status)
@@ -804,6 +835,27 @@ class RunManager:
                 state.cond.notify_all()
             log.info("run %s %s in %.1fs (llm_calls=%s)", ctx.run_id, status, stats["seconds"], stats["llm_calls"])
             asyncio.get_running_loop().call_later(300, self.active.pop, ctx.run_id, None)
+
+    def register_artifacts(self, ctx: RunContext) -> list[dict]:
+        """Registra come artefatti i file creati o modificati durante l'esecuzione."""
+        try:
+            base = ctx.workdir or self.orch.settings.workspace_dir
+            roots = self.orch.settings.roots
+            files = artifacts_mod.scan_changed(base, ctx.started, ctx.touched)
+            out = []
+            for f in files:
+                if not artifacts_mod.is_inside(f, roots):
+                    continue
+                st = f.stat()
+                row = self.db.upsert_artifact(
+                    path=str(f.resolve()), title=artifacts_mod.title_for(f, base), kind=artifacts_mod.kind_of(f),
+                    size=st.st_size, conversation_id=ctx.conversation_id,
+                    project_id=(ctx.project or {}).get("id"), run_id=ctx.run_id)
+                out.append({k: row[k] for k in ("id", "title", "kind", "size", "versions")})
+            return out
+        except Exception:  # noqa: BLE001
+            log.exception("registrazione degli artefatti non riuscita")
+            return []
 
     def cancel(self, run_id: str) -> bool:
         state = self.active.get(run_id)

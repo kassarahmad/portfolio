@@ -725,11 +725,11 @@ export class Office3D {
         <div class="office-alerts o3-alerts" data-alerts></div>
       </div>
       <div class="o3-tools">
-        <button data-act="reset" title="${t("viewReset")}">⌂</button>
-        <button data-act="rotate" title="${t("viewRotate")}">⟳</button>
-        <button data-act="pause" title="${t("viewPause")}">❚❚</button>
+        <button data-act="reset" title="${t("viewReset")}"><svg class="ic s"><use href="#i-home3d"/></svg></button>
+        <button data-act="rotate" title="${t("viewRotate")}"><svg class="ic s"><use href="#i-rotate"/></svg></button>
+        <button data-act="pause" title="${t("viewPause")}"><svg class="ic s"><use href="#i-pause"/></svg></button>
         <button data-act="quality" title="${t("viewQuality")}">HD</button>
-        <button data-act="full" title="${t("viewFull")}">⛶</button>
+        <button data-act="full" title="${t("viewFull")}"><svg class="ic s"><use href="#i-expand"/></svg></button>
       </div>
       <aside class="o3-inspector hidden" data-inspector></aside>`;
     this.labelsEl = this.root.querySelector(".o3-labels");
@@ -749,7 +749,7 @@ export class Office3D {
   toolbar(act, btn) {
     if (act === "reset") { this.selected = null; this.root.querySelector("[data-inspector]").classList.add("hidden"); this.focus = { target: new THREE.Vector3(-0.2, 0.2, -0.4), pos: this.defaultCam.clone() }; }
     if (act === "rotate") { this.controls.autoRotate = !this.controls.autoRotate; btn.classList.toggle("on", this.controls.autoRotate); }
-    if (act === "pause") { this.paused = !this.paused; btn.classList.toggle("on", this.paused); btn.textContent = this.paused ? "▶" : "❚❚"; }
+    if (act === "pause") { this.paused = !this.paused; btn.classList.toggle("on", this.paused); btn.innerHTML = `<svg class="ic s"><use href="#${this.paused ? "i-play" : "i-pause"}"/></svg>`; }
     if (act === "full") { this.opts.onFull?.(); btn.classList.toggle("on"); setTimeout(() => this.resize(), 50); }
     if (act === "quality") { this.quality = this.quality === "high" ? "low" : "high"; btn.classList.toggle("on", this.quality === "high"); this.applyQuality(); }
   }

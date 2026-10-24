@@ -86,7 +86,33 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    instructions TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT 'amber',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    run_id TEXT,
+    path TEXT NOT NULL,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    size INTEGER NOT NULL DEFAULT 0,
+    versions INTEGER NOT NULL DEFAULT 1,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_conv ON artifacts(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_proj ON artifacts(project_id);
 """
+
+PROJECT_COLORS = ("amber", "sage", "sky", "rose", "violet", "slate", "teal", "clay")
 
 
 def now() -> float:
@@ -115,6 +141,9 @@ class Database:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(messages)").fetchall()}
         if "attachments" not in cols:  # migrazione dalla versione precedente
             conn.execute("ALTER TABLE messages ADD COLUMN attachments TEXT")
+        ccols = {r[1] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()}
+        if "project_id" not in ccols:  # migrazione: conversazioni nei progetti
+            conn.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL")
         self._conn = conn
 
     def close(self) -> None:
@@ -151,7 +180,7 @@ class Database:
 
     def stats(self) -> dict:
         out = {}
-        for table in ("conversations", "messages", "runs", "memories", "documents", "chunks"):
+        for table in ("conversations", "messages", "runs", "memories", "documents", "chunks", "projects", "artifacts"):
             out[table] = self.one(f"SELECT COUNT(*) AS n FROM {table}")["n"]
         out["size_bytes"] = self.path.stat().st_size if self.path.exists() else 0
         wal = self.path.with_name(self.path.name + "-wal")
@@ -161,20 +190,122 @@ class Database:
         return out
 
     # -- conversazioni ------------------------------------------------------
-    def create_conversation(self, title: str = "Nuova conversazione") -> dict:
+    def create_conversation(self, title: str = "Nuova conversazione", project_id: str | None = None) -> dict:
         cid, t = new_id(), now()
-        self.execute("INSERT INTO conversations VALUES (?,?,?,?)", (cid, title[:120], t, t))
-        return {"id": cid, "title": title[:120], "created_at": t, "updated_at": t}
+        if project_id and not self.get_project(project_id):
+            project_id = None
+        self.execute("INSERT INTO conversations (id, title, created_at, updated_at, project_id) VALUES (?,?,?,?,?)",
+                     (cid, title[:120], t, t, project_id))
+        if project_id:
+            self.touch_project(project_id)
+        return {"id": cid, "title": title[:120], "created_at": t, "updated_at": t, "project_id": project_id}
 
-    def list_conversations(self, q: str = "") -> list[dict]:
+    def list_conversations(self, q: str = "", project_id: str | None = None) -> list[dict]:
+        where, params = [], []
         if q:
             like = f"%{q}%"
-            return self.query(
-                """SELECT DISTINCT c.* FROM conversations c
-                   LEFT JOIN messages m ON m.conversation_id = c.id
-                   WHERE c.title LIKE ? OR m.content LIKE ?
-                   ORDER BY c.updated_at DESC LIMIT 200""", (like, like))
-        return self.query("SELECT * FROM conversations ORDER BY updated_at DESC LIMIT 200")
+            where.append("(c.title LIKE ? OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id "
+                         "AND m.content LIKE ?))")
+            params += [like, like]
+        if project_id:
+            where.append("c.project_id = ?")
+            params.append(project_id)
+        sql = ("SELECT c.*, (SELECT COUNT(*) FROM artifacts a WHERE a.conversation_id = c.id) AS artifacts "
+               "FROM conversations c" + (" WHERE " + " AND ".join(where) if where else "") +
+               " ORDER BY c.updated_at DESC LIMIT 300")
+        return self.query(sql, params)
+
+    def set_conversation_project(self, cid: str, project_id: str | None) -> None:
+        self.execute("UPDATE conversations SET project_id=? WHERE id=?", (project_id, cid))
+        self.execute("UPDATE artifacts SET project_id=? WHERE conversation_id=?", (project_id, cid))
+
+    # -- progetti -------------------------------------------------------------
+    def create_project(self, name: str, description: str = "", instructions: str = "", color: str = "amber") -> dict:
+        pid, t = new_id(), now()
+        color = color if color in PROJECT_COLORS else "amber"
+        self.execute("INSERT INTO projects VALUES (?,?,?,?,?,?,?)",
+                     (pid, name[:80], description[:500], instructions[:8000], color, t, t))
+        return self.get_project(pid)
+
+    def get_project(self, pid: str) -> dict | None:
+        return self.one("SELECT * FROM projects WHERE id=?", (pid,))
+
+    def list_projects(self) -> list[dict]:
+        return self.query(
+            """SELECT p.*,
+                 (SELECT COUNT(*) FROM conversations c WHERE c.project_id = p.id) AS conversations,
+                 (SELECT COUNT(*) FROM artifacts a WHERE a.project_id = p.id) AS artifacts
+               FROM projects p ORDER BY p.updated_at DESC""")
+
+    def update_project(self, pid: str, **fields: Any) -> dict | None:
+        allowed = {"name": 80, "description": 500, "instructions": 8000, "color": 20}
+        sets, params = [], []
+        for k, v in fields.items():
+            if k not in allowed or v is None:
+                continue
+            v = str(v)[:allowed[k]]
+            if k == "color" and v not in PROJECT_COLORS:
+                continue
+            if k == "name" and not v.strip():
+                continue
+            sets.append(f"{k}=?")
+            params.append(v)
+        if sets:
+            self.execute(f"UPDATE projects SET {', '.join(sets)}, updated_at=? WHERE id=?", (*params, now(), pid))
+        return self.get_project(pid)
+
+    def touch_project(self, pid: str) -> None:
+        self.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), pid))
+
+    def delete_project(self, pid: str) -> None:
+        # le conversazioni e gli artefatti restano, fuori dal progetto
+        self.execute("UPDATE conversations SET project_id=NULL WHERE project_id=?", (pid,))
+        self.execute("UPDATE artifacts SET project_id=NULL WHERE project_id=?", (pid,))
+        self.execute("DELETE FROM projects WHERE id=?", (pid,))
+
+    # -- artefatti ------------------------------------------------------------
+    def upsert_artifact(self, *, path: str, title: str, kind: str, size: int, conversation_id: str | None,
+                        project_id: str | None, run_id: str | None) -> dict:
+        t = now()
+        row = self.one("SELECT * FROM artifacts WHERE path=? AND conversation_id IS ?", (path, conversation_id))
+        if row:
+            self.execute("UPDATE artifacts SET size=?, kind=?, run_id=?, versions=versions+1, updated_at=?, "
+                         "project_id=? WHERE id=?", (size, kind, run_id, t, project_id, row["id"]))
+            return self.get_artifact(row["id"])
+        cur = self.execute(
+            "INSERT INTO artifacts (conversation_id, project_id, run_id, path, title, kind, size, versions, "
+            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)",
+            (conversation_id, project_id, run_id, path, title[:200], kind, size, t, t))
+        return self.get_artifact(cur.lastrowid)
+
+    def get_artifact(self, aid: int) -> dict | None:
+        return self.one("""SELECT a.*, c.title AS conversation_title, p.name AS project_name, p.color AS project_color
+                           FROM artifacts a LEFT JOIN conversations c ON c.id = a.conversation_id
+                           LEFT JOIN projects p ON p.id = a.project_id WHERE a.id=?""", (aid,))
+
+    def list_artifacts(self, *, conversation_id: str | None = None, project_id: str | None = None,
+                       kind: str | None = None, q: str = "", limit: int = 300) -> list[dict]:
+        where, params = [], []
+        if conversation_id:
+            where.append("a.conversation_id=?")
+            params.append(conversation_id)
+        if project_id:
+            where.append("a.project_id=?")
+            params.append(project_id)
+        if kind:
+            where.append("a.kind=?")
+            params.append(kind)
+        if q:
+            where.append("(a.title LIKE ? OR a.path LIKE ?)")
+            params += [f"%{q}%", f"%{q}%"]
+        sql = ("""SELECT a.*, c.title AS conversation_title, p.name AS project_name, p.color AS project_color
+                  FROM artifacts a LEFT JOIN conversations c ON c.id = a.conversation_id
+                  LEFT JOIN projects p ON p.id = a.project_id""" +
+               (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY a.updated_at DESC LIMIT ?")
+        return self.query(sql, (*params, limit))
+
+    def delete_artifact(self, aid: int) -> bool:
+        return self.execute("DELETE FROM artifacts WHERE id=?", (aid,)).rowcount > 0
 
     def get_conversation(self, cid: str) -> dict | None:
         return self.one("SELECT * FROM conversations WHERE id=?", (cid,))

@@ -21,12 +21,13 @@ from starlette.responses import FileResponse, JSONResponse, Response, StreamingR
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from . import artifacts as artifacts_mod
 from .agents import AGENTS, public_agents
 from .config import ROOT, TUNABLES, Settings
 from .db import Database
 from .llm import LLMClient
 from .orchestrator import ApprovalManager, Orchestrator, RunManager
-from .rag import ALLOWED_EXT, RAG, DocumentError, sanitize_collection
+from .rag import ALLOWED_EXT, RAG, DocumentError, extract_pages, sanitize_collection
 from .security import (SESSION_COOKIE, SESSION_TTL, SecurityMiddleware, sign_session, token_matches)
 from .system import (ERRORS, ManagedServer, create_backup, list_backups, list_models, restore_backup,
                      setup_logging, system_metrics, tail_file, vram_fit_warning, gpu_metrics)
@@ -182,8 +183,14 @@ async def conversations(request: Request):
     s = svc(request)
     if request.method == "POST":
         data = await body_json(request)
-        return s.db.create_conversation(str(data.get("title") or "Nuova conversazione"))
-    return {"items": s.db.list_conversations(request.query_params.get("q", "").strip()[:200])}
+        return s.db.create_conversation(str(data.get("title") or "Nuova conversazione"),
+                                        str(data.get("project_id") or "") or None)
+    items = s.db.list_conversations(request.query_params.get("q", "").strip()[:200],
+                                    request.query_params.get("project") or None)
+    busy = {getattr(st, "conversation_id", None) for st in s.runs.active.values() if not st.done}
+    for c in items:
+        c["running"] = c["id"] in busy
+    return {"items": items}
 
 
 @api
@@ -200,12 +207,140 @@ async def conversation(request: Request):
         return {"ok": True}
     if request.method == "PATCH":
         data = await body_json(request)
-        title = str(data.get("title", "")).strip()
-        if not title:
-            raise ApiError(400, "title_required")
-        s.db.rename_conversation(cid, title)
+        if "project_id" in data:
+            pid = str(data.get("project_id") or "") or None
+            if pid and not s.db.get_project(pid):
+                raise ApiError(404, "project_not_found")
+            s.db.set_conversation_project(cid, pid)
+        if "title" in data:
+            title = str(data.get("title", "")).strip()
+            if not title:
+                raise ApiError(400, "title_required")
+            s.db.rename_conversation(cid, title)
         return s.db.get_conversation(cid)
-    return {**conv, "messages": s.db.messages(cid)}
+    project = s.db.get_project(conv["project_id"]) if conv.get("project_id") else None
+    return {**conv, "project": project, "messages": s.db.messages(cid),
+            "artifacts": s.db.list_artifacts(conversation_id=cid)}
+
+
+# ---------------------------------------------------------------------------
+# Progetti
+# ---------------------------------------------------------------------------
+def _project_public(s: Any, p: dict) -> dict:
+    return {**p, "folder": str(artifacts_mod.project_dir(s.settings.workspace_dir, p)),
+            "collection": artifacts_mod.project_collection(p["id"])}
+
+
+@api
+async def projects(request: Request):
+    s = svc(request)
+    if request.method == "POST":
+        data = await body_json(request)
+        name = str(data.get("name", "")).strip()
+        if not name:
+            raise ApiError(400, "name_required")
+        p = s.db.create_project(name, str(data.get("description") or ""), str(data.get("instructions") or ""),
+                                str(data.get("color") or "amber"))
+        artifacts_mod.project_dir(s.settings.workspace_dir, p).mkdir(parents=True, exist_ok=True)
+        return _project_public(s, p)
+    return {"items": [_project_public(s, p) for p in s.db.list_projects()]}
+
+
+@api
+async def project(request: Request):
+    s = svc(request)
+    pid = request.path_params["pid"]
+    p = s.db.get_project(pid)
+    if not p:
+        raise ApiError(404, "not_found")
+    if request.method == "DELETE":
+        if any(getattr(st, "conversation_id", None) in {c["id"] for c in s.db.list_conversations(project_id=pid)}
+               and not st.done for st in s.runs.active.values()):
+            raise ApiError(409, "run_in_progress")
+        s.db.delete_project(pid)
+        return {"ok": True}
+    if request.method == "PATCH":
+        data = await body_json(request)
+        p = s.db.update_project(pid, **{k: data.get(k) for k in ("name", "description", "instructions", "color")})
+        return _project_public(s, p)
+    coll = artifacts_mod.project_collection(pid)
+    docs = [d for d in s.rag.list_documents() if d["collection"] == coll]
+    busy = {getattr(st, "conversation_id", None) for st in s.runs.active.values() if not st.done}
+    convs = s.db.list_conversations(project_id=pid)
+    for c in convs:
+        c["running"] = c["id"] in busy
+    return {**_project_public(s, p), "conversations": convs, "artifacts": s.db.list_artifacts(project_id=pid),
+            "documents": docs}
+
+
+# ---------------------------------------------------------------------------
+# Artefatti
+# ---------------------------------------------------------------------------
+def _artifact_path(s: Any, art: dict) -> Path:
+    path = Path(art["path"])
+    if not artifacts_mod.is_inside(path, s.settings.roots) or not path.is_file():
+        raise ApiError(404, "file_not_found")
+    return path
+
+
+@api
+async def artifacts(request: Request):
+    s = svc(request)
+    qp = request.query_params
+    items = s.db.list_artifacts(conversation_id=qp.get("conversation") or None, project_id=qp.get("project") or None,
+                                kind=qp.get("kind") or None, q=qp.get("q", "").strip()[:200])
+    for a in items:
+        a["exists"] = Path(a["path"]).is_file()
+    return {"items": items}
+
+
+@api
+async def artifact(request: Request):
+    s = svc(request)
+    art = s.db.get_artifact(int(request.path_params["aid"]))
+    if not art:
+        raise ApiError(404, "not_found")
+    if request.method == "DELETE":
+        s.db.delete_artifact(art["id"])
+        return {"ok": True}
+    path = _artifact_path(s, art)
+
+    def read_doc(p: Path) -> str:
+        return "\n\n".join(t for _, t in extract_pages(p))
+    try:
+        content = await asyncio.to_thread(artifacts_mod.preview, path, art["kind"], read_doc)
+    except Exception as exc:  # noqa: BLE001
+        content = {"kind": art["kind"], "error": f"anteprima non disponibile ({type(exc).__name__})"}
+    st = path.stat()
+    return {**art, "size": st.st_size, "modified": st.st_mtime, "content": content}
+
+
+async def artifact_raw(request: Request):
+    s = svc(request)
+    art = s.db.get_artifact(int(request.path_params["aid"]))
+    if not art:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    try:
+        path = _artifact_path(s, art)
+    except ApiError:
+        return JSONResponse({"error": "file_not_found"}, status_code=404)
+    ext = path.suffix.lower()
+    download = request.query_params.get("download") == "1"
+    headers = {"Cache-Control": "no-store", "X-Frame-Options": "SAMEORIGIN",
+               # contenuto prodotto dagli agenti: isolato, senza accesso all'app né alla rete
+               "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; img-src data: blob: 'self'; "
+                                          "style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; "
+                                          "frame-ancestors 'self'"}
+    if ext == ".pdf" and not download:
+        # il visualizzatore PDF del browser non funziona in un documento "sandbox"
+        headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
+    media = "application/octet-stream" if download else artifacts_mod.MIME.get(ext, "text/plain; charset=utf-8")
+    if not download and ext not in artifacts_mod.MIME and art["kind"] not in ("code", "document", "data"):
+        media = "application/octet-stream"
+        download = True
+    return FileResponse(path, media_type=media, headers=headers,
+                        filename=path.name if download else None,
+                        content_disposition_type="attachment" if download else "inline")
 
 
 @api
@@ -326,6 +461,31 @@ async def documents_search(request: Request):
 @api
 async def documents_reembed(request: Request):
     return {"documents": await svc(request).rag.reembed_missing()}
+
+
+async def artifact_site(request: Request):
+    """Anteprima di una pagina HTML con i file vicini (CSS, JS, immagini) della stessa cartella."""
+    s = svc(request)
+    art = s.db.get_artifact(int(request.path_params["aid"]))
+    if not art:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    base = Path(art["path"]).parent.resolve()
+    target = (base / request.path_params["rest"]).resolve()
+    if not (target == base or base in target.parents) or not target.is_file() \
+            or not artifacts_mod.is_inside(target, s.settings.roots):
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    ext = target.suffix.lower()
+    media = {".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+             ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
+             ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
+             ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon",
+             ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf"}.get(ext, "application/octet-stream")
+    headers = {"Cache-Control": "no-store", "X-Frame-Options": "SAMEORIGIN",
+               "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-modals; default-src 'self' data: blob:; "
+                                          "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+                                          "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; "
+                                          "frame-ancestors 'self'"}
+    return FileResponse(target, media_type=media, headers=headers)
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +741,12 @@ def create_app(settings: Settings | None = None, llm: Any = None, embedder: Any 
         Route("/api/conversations", conversations, methods=["GET", "POST"]),
         Route("/api/conversations/{cid}", conversation, methods=["GET", "PATCH", "DELETE"]),
         Route("/api/conversations/{cid}/messages", post_message, methods=["POST"]),
+        Route("/api/projects", projects, methods=["GET", "POST"]),
+        Route("/api/projects/{pid}", project, methods=["GET", "PATCH", "DELETE"]),
+        Route("/api/artifacts", artifacts),
+        Route("/api/artifacts/{aid:int}", artifact, methods=["GET", "DELETE"]),
+        Route("/api/artifacts/{aid:int}/raw", artifact_raw),
+        Route("/api/artifacts/{aid:int}/site/{rest:path}", artifact_site),
         Route("/api/runs/{rid}", run_detail),
         Route("/api/runs/{rid}/events", run_events),
         Route("/api/runs/{rid}/cancel", cancel_run, methods=["POST"]),

@@ -73,8 +73,14 @@ APP_ROOT = Path(__file__).resolve().parents[3]
 SECRET_NAMES = {".env", "id_rsa", "id_ed25519", "credentials.json", "login data", "cookies"}
 
 
+def workdir(ctx: ToolContext) -> Path:
+    """Cartella di lavoro dell'esecuzione: quella del progetto, se la conversazione ne ha uno."""
+    wd = getattr(ctx.run, "workdir", None) if ctx.run is not None else None
+    return Path(wd) if wd else ctx.settings.workspace_dir
+
+
 def resolve(ctx: ToolContext, path: str) -> Path:
-    target = safe_path(ctx.settings.workspace_dir, path, ctx.settings.roots)
+    target = safe_path(workdir(ctx), path, ctx.settings.roots)
     ws = ctx.settings.workspace_dir.resolve()
     inside_ws = target == ws or ws in target.parents
     if not inside_ws and (target == APP_ROOT or APP_ROOT in target.parents):
@@ -226,6 +232,9 @@ async def write_file(ctx: ToolContext, path: str, content: str) -> str:
         backup = _backup_file(ctx, target)
         note = f" (backup della versione precedente: {backup.name})"
     target.write_text(content, encoding="utf-8")
+    touched = getattr(ctx.run, "touched", None) if ctx.run is not None else None
+    if isinstance(touched, set):
+        touched.add(str(target))
     return f"Scritto {display(ctx, target)} ({len(content)} caratteri){note}"
 
 
@@ -367,7 +376,7 @@ async def run_python(ctx: ToolContext, code: str) -> str:
     script = runs / f"run_{uuid.uuid4().hex[:8]}.py"
     script.write_text(code, encoding="utf-8")
     try:
-        return await _run_process([sys.executable, "-I", str(script)], ctx.settings.workspace_dir,
+        return await _run_process([sys.executable, "-I", str(script)], workdir(ctx),
                                   ctx.settings.command_timeout)
     finally:
         script.unlink(missing_ok=True)
