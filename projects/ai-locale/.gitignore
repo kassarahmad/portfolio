@@ -2,6 +2,6 @@
 __pycache__/
 *.pyc
 .env
-data/
-models/*.gguf
-tools/
+/data/
+/models/*.gguf
+/tools/
