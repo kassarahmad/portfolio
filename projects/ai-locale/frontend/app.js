@@ -355,6 +355,14 @@ function handleEvent(ev, replay) {
       });
       break;
     }
+    case "guard_review":
+      setAgent("critico", `busy:${d.tool}`);
+      tl("critico", `${who("critico")} <span class="what">${t("guardReview")}</span> ${agentTag(d.target)} <span class="tag">${esc(d.tool)}</span><details><summary>…</summary><pre>${esc(d.preview)}</pre></details>`).dataset.guard = `${d.target}:${d.tool}`;
+      break;
+    case "guard_verdict":
+      setAgent("critico", "done");
+      tl("critico", `${who("critico")} <span class="tag ${d.approved ? "ok" : "bad"}">${esc(d.tool)} · ${d.approved ? t("guardOk") : t("guardNo")}</span>${d.reason ? `<div class="body muted">${esc(d.reason)}</div>` : ""}`);
+      break;
     case "consult":
       setAgent(d.target, `busy:${t("replies")}`);
       tl(d.source, `${who(d.source)} <span class="what">${t("consults")}</span> ${agentTag(d.target)}<div class="body">${esc(d.question)}</div>`);
@@ -483,6 +491,15 @@ function officeEvent(o, type, d) {
       o.set(d.agent, "waiting", { text: `${t("approvalNeeded")}: ${d.tool}`, bubble: t("bubbleApproval") });
       break;
     case "approval_resolved":
+      break;
+    case "guard_review":
+      o.visit?.(d.target, "critico");
+      o.setAfter(o.fly(d.target, "critico", "paper"), "critico", "reviewing", { text: `${t("guardReview")} ${agent(d.target).name}: ${d.tool}`, bubble: t("bubbleGuard") });
+      o.set(d.target, "waiting", { text: `${d.tool}…` });
+      break;
+    case "guard_verdict":
+      o.set("critico", d.approved ? "done" : "error", { text: `${d.tool}: ${d.approved ? t("guardOk") : t("guardNo")}`, bubble: d.approved ? null : short(d.reason, 70) });
+      o.fly("critico", d.target, d.approved ? "ok" : "ko").then(() => o.goHome?.(d.target));
       break;
     case "consult":
       o.set(d.source, "asking", { text: `${t("consults")} ${agent(d.target).name}`, bubble: short(d.question, 70) });

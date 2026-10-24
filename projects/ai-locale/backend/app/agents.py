@@ -61,7 +61,7 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
             "Save charts or reports with code into the workspace when useful. State assumptions and give "
             "concrete conclusions."),
         tools=["read_file", "read_document", "list_files", "search_text", "run_python", "write_file",
-               "search_documents", *COMMON_TOOLS],
+               "search_documents", "system_info", *COMMON_TOOLS],
     ),
     AgentSpec(
         id="scrittore", name="Scrittore", color="#d6457a",
@@ -73,13 +73,13 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
     ),
     AgentSpec(
         id="operatore", name="Operatore", color="#5b6b7f",
-        description="Opera sul PC: organizza cartelle, sposta e rinomina file, esegue comandi, sempre con la tua approvazione.",
+        description="Opera sul PC: organizza cartelle, sposta e rinomina file, esegue comandi con approvazione (tua o del Critico).",
         instructions=(
             "You are the Operator. You perform actions on the user's computer with run_command and file "
-            "tools. Every command is shown to the user, who must approve it. Prefer safe, read-only "
+            "tools. Every risky command is approved by the user or, in autonomous mode, by the Critic. Prefer safe, read-only "
             "commands; explain what each command does before running it. Never try to bypass a denial."),
-        tools=["run_command", "list_files", "read_file", "search_text", "make_dir", "move_file", "delete_file",
-               "write_file", *COMMON_TOOLS],
+        tools=["run_command", "system_info", "list_files", "read_file", "search_text", "make_dir", "move_file",
+               "delete_file", "write_file", *COMMON_TOOLS],
     ),
     AgentSpec(
         id="navigatore", name="Navigatore", color="#0fa3a3",

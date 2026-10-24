@@ -75,6 +75,22 @@ github.com/tesseract-ocr/tessdata e copialo in `C:\Program Files\Tesseract-OCR\t
 Per far lavorare gli agenti sui tuoi progetti reali aggiungi nel `.env`:
 `AILOCALE_ALLOWED_PATHS=C:\Users\Ahmad\Progetti`. Fuori da queste cartelle non possono leggere né scrivere.
 
+## Modalità autonoma
+
+In **Impostazioni → Modalità autonoma** le azioni rischiose (scrivere o sovrascrivere file, eseguire
+codice e comandi) non le approvi più tu: le approva il **Critico** come garante, che legge la tua
+richiesta e l'azione e decide. Ogni decisione, con il motivo, resta nella cronologia e nell'audit.
+
+Restano sempre attivi, anche in modalità autonoma:
+- i comandi distruttivi bloccati (formattare, cancellare dischi, spegnere il PC, leggere il `.env`…);
+- solo cartelle autorizzate; la cartella di installazione di AI Locale e i file di credenziali sono protetti;
+- le cancellazioni vanno nel cestino di AI Locale e le sovrascritture salvano un backup;
+- dopo aver letto pagine web, i comandi che contattano siti esterni sono bloccati;
+- inviare moduli o scrivere nei campi dei siti web chiede comunque a te.
+
+Il Critico controlla anche il lavoro con regole fisse: approva solo ciò che risulta dall'output reale
+degli strumenti; "verificato manualmente" senza prova viene rimandato indietro.
+
 ## Configurazione
 
 Tutto in `.env` (vedi `.env.example`). Le opzioni di comportamento del team (temperatura,

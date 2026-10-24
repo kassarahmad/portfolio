@@ -24,6 +24,8 @@ def role_of(messages: list[dict]) -> str:
     system = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
     if "Your job now is ONLY to plan" in system:
         return "planner"
+    if system.startswith("You are the Critic acting as SAFETY GUARDIAN"):
+        return "guardian"
     if system.startswith("You are the Critic"):
         return "critic"
     if "Write the final answer to the user" in system or "helpful local AI assistant" in system:

@@ -168,12 +168,16 @@ TUNABLES: dict[str, tuple[Any, type, Any, Any]] = {
     "max_tasks": (5, int, 1, 8),
     "parallel_agents": (2, int, 1, 4),
     "critic_enabled": (True, bool, None, None),
-    "max_revisions": (1, int, 0, 3),
+    "max_revisions": (2, int, 0, 3),
     "disable_thinking": (False, bool, None, None),
     "history_messages": (8, int, 0, 30),
     "rag_top_k": (5, int, 1, 12),
     "max_tokens": (2048, int, 256, 8192),
     "web_access": (True, bool, None, None),
+    # Modalità autonoma: le azioni rischiose le approva il Critico (garante) invece dell'utente.
+    # Restano sempre attivi i blocchi fissi (comandi distruttivi, cartelle autorizzate, cestino, backup)
+    # e l'invio di moduli sui siti web chiede comunque all'utente.
+    "autonomous_mode": (False, bool, None, None),
 }
 
 
