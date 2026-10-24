@@ -2,6 +2,7 @@ import { applyI18n, getLang, setLang, t } from "./i18n.js";
 import { esc, renderMarkdown } from "./markdown.js";
 import { Office } from "./office.js";
 import { fmtBytes, highlight, icon, kindIcon, openArtifact } from "./viewer.js";
+import { VoiceIO } from "./voice.js";
 
 // L'ufficio 3D (three.js, ~2 MB) si carica solo quando serve
 let office3dModule = null;
@@ -270,9 +271,12 @@ function addMessage(role, content, attachments = []) {
       $(".bubble", el).insertAdjacentHTML("afterbegin", `<div class="msg-images">${attachments.map((a) => `<img src="/api/uploads/${encodeURIComponent(a.split("/").pop())}" alt="">`).join("")}</div>`);
     }
   } else {
-    el.innerHTML = `<div class="who-line"><span class="mark">${icon("i-mark")}</span><b>AI Locale</b></div><div class="bubble"></div>`;
+    el.innerHTML = `<div class="who-line"><span class="mark">${icon("i-mark")}</span><b>AI Locale</b></div><div class="bubble"></div><div class="msg-actions"><button class="icon-btn s" data-read title="${t("readAloud")}">${icon("i-volume", "s")}</button><button class="icon-btn s" data-copy-msg title="${t("copy")}">${icon("i-copy", "s")}</button></div>`;
+    el.dataset.raw = content;
     $(".bubble", el).innerHTML = renderMarkdown(content);
     highlightIn(el);
+    $("[data-read]", el).addEventListener("click", (e) => readAloud(el, e.currentTarget));
+    $("[data-copy-msg]", el).addEventListener("click", () => navigator.clipboard?.writeText(el.dataset.raw || "").then(() => toast(t("copied"))));
   }
   $("#messages").appendChild(el);
   return el;
@@ -291,7 +295,7 @@ function setBusy(busy) {
 }
 function updateSendState() { $("#sendBtn").disabled = !$("#input").value.trim(); }
 
-async function send(text) {
+async function send(text, opts = {}) {
   text = text.trim();
   if (!text || state.runId) return;
   try {
@@ -309,7 +313,7 @@ async function send(text) {
     updateSendState();
     scrollBottom(true);
     const { run_id: runId } = await api(`/api/conversations/${state.currentId}/messages`, {
-      method: "POST", body: { content: text, collections: [...state.selected], attachments },
+      method: "POST", body: { content: text, collections: [...state.selected], attachments, voice: Boolean(opts.voice) },
     });
     resetRoom();
     attachRun(runId, false);
@@ -500,7 +504,9 @@ function handleEvent(ev, replay) {
         const b = $(".bubble", state.assistantEl);
         b.classList.remove("cursor");
         b.innerHTML = renderMarkdown(d.content);
+        state.assistantEl.dataset.raw = d.content;
         highlightIn(b);
+        state.call?.answered?.(d.content);
         if (d.artifacts?.length) { renderArtifactList(state.assistantEl, d.artifacts, true); loadConversations(); }
         if (d.sources?.length) b.insertAdjacentHTML("beforeend", `<div class="sources">${d.sources.map((s) => s.url ? `<a class="source" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.filename)}</a>` : `<span class="source">${esc(s.filename)}${s.page ? `, p. ${s.page}` : ""}</span>`).join("")}</div>`);
         scrollBottom();
@@ -511,6 +517,7 @@ function handleEvent(ev, replay) {
         const b = $(".bubble", state.assistantEl);
         b.classList.remove("cursor");
         b.innerHTML = renderMarkdown(`**[${d.status === "cancelled" ? t("cancelled") : t("runFailed")}]** ${d.message}`);
+        state.call?.answered?.(d.status === "cancelled" ? "" : t("callError"));
       }
       tl("coordinatore", `<span class="tag bad">${esc(d.status)}</span> <span class="what">${esc(d.message)}</span>`, "error");
       break;
@@ -707,6 +714,113 @@ async function attachFiles(files) {
   renderAttachments();
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Voce: dettatura, lettura ad alta voce, chiamata
+// ---------------------------------------------------------------------------
+const voice = new VoiceIO({ api, getLang });
+
+function voiceError(err) {
+  if (err?.code === "insecure") toast(t("micInsecure"), true);
+  else if (err?.code === "denied") toast(t("micDenied"), true);
+  else if (err?.status === 503) toast(voice.status.hint_stt || t("sttMissing"), true);
+  else toast(err?.message || String(err), true);
+}
+
+async function readAloud(el, btn) {
+  if (voice.speaking) { voice.stopSpeaking(); $$(".msg-actions [data-read]").forEach((b) => b.classList.remove("on")); return; }
+  btn.classList.add("on");
+  try { await voice.speak(el.dataset.raw || $(".bubble", el).textContent); } finally { btn.classList.remove("on"); }
+}
+
+let dictation = null;
+async function toggleDictation() {
+  const btn = $("#micBtn");
+  if (dictation) { dictation.stop = true; return; }
+  if (!voice.status.stt) { await voice.refresh(); if (!voice.status.stt) { toast(voice.status.hint_stt || t("sttMissing"), true); return; } }
+  try { await voice.openMic(); } catch (err) { voiceError(err); return; }
+  dictation = { stop: false };
+  btn.classList.add("rec");
+  btn.title = t("stopDictation");
+  try {
+    const blob = await voice.listen({ silenceMs: 1600, idleMs: 10000, until: () => dictation.stop });
+    btn.classList.remove("rec");
+    if (blob) {
+      btn.classList.add("busy");
+      const text = await voice.transcribe(blob);
+      if (text) {
+        const ta = $("#input");
+        ta.value = (ta.value ? `${ta.value.trimEnd()} ` : "") + text;
+        autoGrow(); updateSendState(); ta.focus();
+      }
+    }
+  } catch (err) { voiceError(err); }
+  finally {
+    dictation = null;
+    btn.classList.remove("rec", "busy");
+    btn.title = t("voiceDictate");
+    if (!state.call) voice.closeMic();
+  }
+}
+
+function setCallState(st, heard) {
+  const bar = $("#callBar");
+  bar.dataset.state = st;
+  $("#callState").textContent = t({ listening: "callListening", thinking: "callThinking", transcribing: "transcribing", speaking: "callSpeaking", muted: "callMuted" }[st] || "callListening");
+  if (heard !== undefined) $("#callHeard").textContent = heard;
+}
+
+async function startCall() {
+  if (state.call) return;
+  await voice.refresh();
+  if (!voice.status.stt) { toast(voice.status.hint_stt || t("sttMissing"), true); return; }
+  try { await voice.openMic(); } catch (err) { voiceError(err); return; }
+  const call = { active: true, muted: false, ctrl: null, answered: null };
+  state.call = call;
+  $("#callBar").classList.remove("hidden");
+  $("#callBtn").classList.add("busy");
+  setCallState("listening", t("callHint"));
+  const off = voice.onLevel((lvl) => $("#callOrb").style.setProperty("--lvl", Math.min(1, lvl * 14).toFixed(3)));
+  call.cleanup = off;
+  while (call.active) {
+    if (call.muted) { setCallState("muted"); await new Promise((r) => setTimeout(r, 250)); continue; }
+    setCallState("listening");
+    call.ctrl = new AbortController();
+    const blob = await voice.listen({ silenceMs: 900, signal: call.ctrl.signal });
+    if (!call.active) break;
+    if (!blob || call.muted) continue;
+    setCallState("transcribing");
+    let text = "";
+    try { text = await voice.transcribe(blob); } catch (err) { voiceError(err); }
+    if (!call.active) break;
+    if (!text || text.length < 2) continue;
+    setCallState("thinking", `“${text}”`);
+    const answer = await new Promise((resolve) => {
+      call.answered = (a) => { call.answered = null; resolve(a); };
+      send(text, { voice: true }).then(() => { if (!state.runId && call.answered) { call.answered = null; resolve(""); } });
+    });
+    if (!call.active) break;
+    if (answer) {
+      setCallState("speaking");
+      await voice.speak(answer, { onBargeIn: () => setCallState("listening") });
+    }
+  }
+}
+
+function endCall() {
+  const call = state.call;
+  if (!call) return;
+  call.active = false;
+  call.ctrl?.abort();
+  call.answered?.("");
+  call.cleanup?.();
+  voice.stopSpeaking();
+  voice.closeMic();
+  state.call = null;
+  $("#callBar").classList.add("hidden");
+  $("#callBtn").classList.remove("busy");
+}
 
 // ---------------------------------------------------------------------------
 // Artefatti: pannello nella chat, cassetto nelle altre pagine
@@ -1279,6 +1393,17 @@ async function init() {
   });
 
   $("#newChat").addEventListener("click", () => newConversation());
+  $("#micBtn").addEventListener("click", toggleDictation);
+  $("#callBtn").addEventListener("click", () => (state.call ? endCall() : startCall()));
+  $("#callEnd").addEventListener("click", endCall);
+  $("#callSkip").addEventListener("click", () => voice.stopSpeaking());
+  $("#callMute").addEventListener("click", (e) => {
+    if (!state.call) return;
+    state.call.muted = !state.call.muted;
+    e.currentTarget.classList.toggle("on", state.call.muted);
+    if (state.call.muted) state.call.ctrl?.abort();
+  });
+  voice.refresh();
   $("#brandHome").addEventListener("click", (e) => { e.preventDefault(); newConversation(); });
   $("#collapseSidebar").addEventListener("click", () => toggleSidebar());
   $("#convProject").addEventListener("click", moveDialog);

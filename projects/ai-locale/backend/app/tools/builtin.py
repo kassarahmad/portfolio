@@ -586,6 +586,40 @@ async def system_info(ctx: ToolContext, top: int = 10) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Spegnimento, riavvio, blocco (sempre con il permesso dell'utente)
+# ---------------------------------------------------------------------------
+POWER_ACTIONS = {
+    "spegni": ["shutdown", "/s", "/t"], "riavvia": ["shutdown", "/r", "/t"],
+    "blocca": ["rundll32.exe", "user32.dll,LockWorkStation"], "annulla": ["shutdown", "/a"],
+}
+POWER_LABELS = {"spegni": "Spegnere il PC", "riavvia": "Riavviare il PC", "blocca": "Bloccare lo schermo",
+                "annulla": "Annullare lo spegnimento o il riavvio programmato"}
+
+
+def _power_preview(args: dict) -> str:
+    action = str(args.get("action", "")).lower()
+    delay = max(30, min(int(args.get("delay_seconds") or 60), 3600))
+    label = POWER_LABELS.get(action, f"Azione sconosciuta: {action}")
+    extra = f"\nTra {delay} secondi. Per annullare: chiedi 'annulla lo spegnimento' o esegui shutdown /a." \
+        if action in ("spegni", "riavvia") else ""
+    return f"{label}{extra}\nSalva il lavoro aperto prima di confermare."
+
+
+async def power_action(ctx: ToolContext, action: str, delay_seconds: int = 60) -> str:
+    action = (action or "").strip().lower()
+    if action not in POWER_ACTIONS:
+        raise ToolError("Azione non valida: usa spegni, riavvia, blocca o annulla.")
+    if os.name != "nt":
+        raise ToolError("Spegnimento e riavvio sono disponibili solo su Windows.")
+    argv = list(POWER_ACTIONS[action])
+    if action in ("spegni", "riavvia"):
+        delay = max(30, min(int(delay_seconds or 60), 3600))
+        argv += [str(delay), "/c", "AI Locale: richiesto dall'utente"]
+    out = await _run_process(argv, ctx.settings.workspace_dir, 30)
+    return f"{POWER_LABELS[action]}: comando inviato.\n{out}".strip()
+
+
+# ---------------------------------------------------------------------------
 def build_registry() -> ToolRegistry:
     r = ToolRegistry()
     s = {"type": "string"}
@@ -610,6 +644,11 @@ def build_registry() -> ToolRegistry:
         {"source": s, "destination": s}, move_file, risk="write", required=["source", "destination"])
     add("delete_file", "Sposta un file/cartella nel cestino di AI Locale (recuperabile). Richiede approvazione.",
         {"path": s}, delete_file, risk="write", required=["path"])
+    add("power_action", "Spegne, riavvia (con 60 s di preavviso) o blocca il PC, oppure annulla uno spegnimento. "
+        "Chiede SEMPRE il permesso all'utente.",
+        {"action": {**s, "enum": ["spegni", "riavvia", "blocca", "annulla"]},
+         "delay_seconds": {**i, "description": "Secondi prima di spegnere/riavviare (30-3600, default 60)"}},
+        power_action, risk="external", required=["action"], requires_approval=True, preview=_power_preview)
     add("system_info", "Misura lo stato del PC: CPU % reale per processo, RAM, dischi, GPU (VRAM, temperatura).",
         {"top": {**i, "description": "Quanti processi elencare (default 10)"}}, system_info)
     add("run_python", "Esegue codice Python nella cartella di lavoro e restituisce l'output. Richiede approvazione.",

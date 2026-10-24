@@ -90,6 +90,19 @@ Per far lavorare gli agenti sui tuoi progetti reali aggiungi nel `.env`:
 Scorciatoie: `Ctrl+Shift+O` nuova chat, `Ctrl+K` cerca sessioni, `Ctrl+B` mostra/nasconde la barra, `Esc` chiude
 il visualizzatore.
 
+## Voce
+
+Installa con `powershell -ExecutionPolicy Bypass -File scripts\voice.ps1` (circa 600 MB, una volta sola):
+**faster-whisper** trascrive sulla CPU (la GPU resta al modello) e **Piper** legge con una voce italiana.
+L'audio non esce mai dal PC.
+
+- **Detta** (icona microfono): parli, ti fermi, il testo compare nel campo.
+- **Chiamata** (icona telefono): conversazione a mani libere. Quando ti fermi il team risponde a voce, in
+  modo breve; se parli mentre risponde, si interrompe e ti ascolta. Pausa microfono e Termina nella barra.
+- **Leggi ad alta voce** su ogni risposta. Senza Piper usa le voci installate in Windows.
+
+Il microfono funziona da `http://127.0.0.1:8765` (o con HTTPS); da remoto via VPN in http il browser lo blocca.
+
 ## Modalità autonoma
 
 In **Impostazioni → Modalità autonoma** le azioni rischiose (scrivere o sovrascrivere file, eseguire

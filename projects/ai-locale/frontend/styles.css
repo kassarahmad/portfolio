@@ -711,3 +711,28 @@ dialog.modal[open] { animation: pop var(--d) var(--ease); }
 .composer textarea:focus-visible, .project-start input:focus-visible, .sb-search input:focus-visible, .mem-list textarea:focus-visible { box-shadow: none; }
 .form-grid .seg { justify-self: start; }
 .metric .val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* -- Voce ------------------------------------------------------------------- */
+#micBtn.rec { color: var(--bad); background: var(--bad-soft); }
+#micBtn.busy, #callBtn.busy { color: var(--accent-text); }
+.call-bar {
+  max-width: var(--read); margin: 0 auto var(--s2); display: flex; align-items: center; gap: var(--s3);
+  padding: 8px 8px 8px 12px; border: 1px solid var(--line-2); border-radius: var(--r-xl); background: var(--surface);
+  box-shadow: var(--shadow-composer); animation: msgin var(--d) var(--ease);
+}
+.call-orb { position: relative; width: 34px; height: 34px; flex: none; display: grid; place-items: center; }
+.call-orb i { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); transform: scale(calc(1 + var(--lvl, 0) * .8)); transition: transform 80ms linear; }
+.call-orb::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); transform: scale(calc(.72 + var(--lvl, 0) * .28)); opacity: calc(.25 + var(--lvl, 0) * .75); transition: transform 80ms linear; }
+.call-bar:not([data-state="listening"]) .call-orb::before { transform: scale(.72); opacity: .25; }
+.call-bar[data-state="thinking"] .call-orb i { animation: dots 1.2s var(--ease) infinite; transform: none; }
+.call-bar[data-state="speaking"] .call-orb i { background: var(--ok); animation: live 1s var(--ease) infinite; transform: scale(1.3); }
+.call-bar[data-state="muted"] .call-orb i { background: var(--text-3); transform: none; }
+.call-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.call-txt b { font-size: var(--t-ui-s); font-weight: 600; }
+.call-txt span { font-size: var(--t-meta); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.call-end { background: var(--bad); color: #fff; border-color: transparent; }
+.call-end:hover { background: var(--bad); filter: brightness(1.08); }
+#callMute.on { color: var(--bad); }
+.msg-actions { display: flex; gap: 2px; margin-top: var(--s2); opacity: 0; transition: opacity var(--d-fast); }
+.msg.assistant:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
+.msg-actions .icon-btn.on { color: var(--accent-text); }

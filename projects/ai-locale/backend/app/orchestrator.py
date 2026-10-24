@@ -106,6 +106,7 @@ class RunContext:
         self.project: dict | None = None   # progetto della conversazione, se c'è
         self.workdir: Path | None = None   # cartella di lavoro (del progetto o generale)
         self.touched: set[str] = set()     # file scritti con write_file (anche fuori dalla cartella di lavoro)
+        self.voice = False                 # richiesta fatta a voce (chiamata): risposte brevi e parlate
         self.stats = {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
                       "tool_calls": 0, "llm_seconds": 0.0}
         self._emitter = emitter
@@ -214,6 +215,7 @@ Rules:
 - Use "depends_on" when a task needs another task's result; independent tasks run in parallel.
 - Current information (news, prices, versions, people, events) needs 'ricercatore' (web search) or
   'navigatore' (interactive browsing). Building software or files needs 'programmatore'.
+- Actions on this PC (commands, files, folders, system status, shutdown/restart/lock) need 'operatore'.
 - Only use agent ids from the team list.
 {docs_hint}
 Reply with JSON only, no other text:
@@ -267,8 +269,11 @@ Write the final answer to the user, using the team's work on the shared blackboa
 SHARED BLACKBOARD:
 {blackboard}"""
 
-DIRECT_PROMPT = """You are a helpful local AI assistant (the Coordinator of an agent team). Today is {today}.
-Reply in the user's language, clearly and concisely. Markdown allowed. Do not invent facts.
+DIRECT_PROMPT = """You are AI Locale, a local AI assistant running on the user's own PC (you coordinate a team of agents).
+Today is {today}. Reply in the user's language, clearly and concisely. Markdown allowed. Do not invent facts.
+The team CAN act on this PC through tools: files, commands, web search, a browser, images, documents, and
+shutdown/restart/lock with the user's permission. Never say you have no access to the PC; if a request needs
+those tools, say the team will do it when asked as a task, and explain any safety limit honestly.
 {memory}"""
 
 
@@ -290,7 +295,7 @@ When unsure, DENY and suggest a safer alternative.
 Reply with JSON only: {"approve": true, "reason": "one short sentence in the user's language"}"""
 
 # Azioni che restano all'utente anche in modalità autonoma: agiscono su siti di terzi
-HUMAN_ONLY_TOOLS = {"browser_click", "browser_type"}
+HUMAN_ONLY_TOOLS = {"browser_click", "browser_type", "power_action"}
 _EXTERNAL_URL = re.compile(r"https?://(?!(?:localhost|127\.0\.0\.1|\[::1\])(?:[:/]|$))", re.I)
 _NET_CMD = re.compile(r"\b(invoke-webrequest|invoke-restmethod|iwr|irm|curl|wget|start-bitstransfer|"
                       r"scp|sftp|ftp|ssh|urlopen|requests\.(get|post|put)|httpx\.)", re.I)
@@ -363,6 +368,9 @@ class Orchestrator:
         hist_txt = "\n".join(f"{m['role']}: {truncate(m['content'], 400)}" for m in history[-6:])
         user = (f"Conversation so far:\n{hist_txt or '(none)'}\n\n" if history else "") + \
                f"User request:\n{ctx.user_message}"
+        if ctx.voice:
+            user += ("\n\n(This is a live VOICE CALL: prefer a direct answer; plan tasks only when the request "
+                     "really needs tools, and use as few as possible.)")
         messages = [{"role": "system", "content": planner_prompt(ctx.tunables["max_tasks"], bool(ctx.collections),
                                                                  ctx.capabilities, ctx.attachments)
                      + "\n" + self._memory_block() + self._project_block(ctx)},
@@ -676,6 +684,9 @@ class Orchestrator:
         else:
             system = SYNTH_PROMPT.format(today=_today(), memory=self._memory_block(),
                                          blackboard=ctx.blackboard.summary(max_chars=9000, per_entry=3500))
+        if ctx.voice:
+            system += ("\nVOICE CALL: your answer will be read aloud. Answer in 1-4 short spoken sentences, "
+                       "no Markdown, no lists, no code (say that code or files are in the chat).")
         messages = [{"role": "system", "content": system + self._project_block(ctx)}, *self._history(ctx),
                     {"role": "user", "content": self._nothink(ctx, ctx.user_message)}]
 
@@ -766,7 +777,7 @@ class RunManager:
                    for s in self.active.values())
 
     async def start(self, conversation_id: str, message: str, collections: list[str],
-                    attachments: list[str] | None = None) -> str:
+                    attachments: list[str] | None = None, voice: bool = False) -> str:
         run_id = new_id()
         state = RunState(run_id)
         state.conversation_id = conversation_id  # type: ignore[attr-defined]
@@ -790,6 +801,7 @@ class RunManager:
                 state.cond.notify_all()
 
         ctx = RunContext(run_id, conversation_id, message, self.db.get_tunables(), collections, emitter, attachments)
+        ctx.voice = voice
         ws = self.orch.settings.workspace_dir
         ctx.workdir = ws
         project = self.db.get_project(conv["project_id"]) if conv and conv.get("project_id") else None

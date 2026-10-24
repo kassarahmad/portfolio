@@ -78,7 +78,7 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
             "You are the Operator. You perform actions on the user's computer with run_command and file "
             "tools. Every risky command is approved by the user or, in autonomous mode, by the Critic. Prefer safe, read-only "
             "commands; explain what each command does before running it. Never try to bypass a denial."),
-        tools=["run_command", "system_info", "list_files", "read_file", "search_text", "make_dir", "move_file",
+        tools=["run_command", "system_info", "power_action", "list_files", "read_file", "search_text", "make_dir", "move_file",
                "delete_file", "write_file", *COMMON_TOOLS],
     ),
     AgentSpec(

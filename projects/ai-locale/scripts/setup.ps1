@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   AI Locale - installazione guidata per Windows 10/11.
 
@@ -185,6 +185,12 @@ if (-not $SkipModels) {
     }
 }
 Set-EnvValue "LLAMA_AUTOSTART" "true"
+
+# ---------------------------------------------------------------- 5a. Voce
+Step "5a. Voce (trascrizione e lettura, tutto locale)"
+if (Ask "Installare la voce (Whisper + voce italiana Piper, circa 600 MB)?") {
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "voice.ps1")
+}
 
 # ---------------------------------------------------------------- 5b. Browser e OCR
 Step "5b. Browser automatico e OCR"

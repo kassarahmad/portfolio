@@ -52,6 +52,11 @@
     <symbol id="i-activity" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="6" cy="17.5" r="1.6"/><path d="M10.5 6.5h9M10.5 12h9M10.5 17.5h6"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14.5 4.5h5v5M9.5 19.5h-5v-5M19.5 4.5l-6 6M4.5 19.5l6-6"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3"/></symbol>
+    <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="M9 9V6.5a3 3 0 0 1 5.6-1.5M15 10.5v1a3 3 0 0 1-4.6 2.5M5.5 11a6.5 6.5 0 0 0 10.6 5M18.5 11a6.4 6.4 0 0 1-.5 2.5M12 17.5v3M4 4l16 16"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 4.5h2.6l1.4 3.6-1.8 1.2a10 10 0 0 0 5.9 5.9l1.2-1.8 3.6 1.4v2.6a1.8 1.8 0 0 1-2 1.8A15 15 0 0 1 4.8 6.5a1.8 1.8 0 0 1 1.8-2z"/></symbol>
+    <symbol id="i-phone-off" viewBox="0 0 24 24"><path d="M4.5 13.6c4.3-3.8 10.7-3.8 15 0l-1.7 2.3-3.1-1.2v-2.3a8 8 0 0 0-5.4 0v2.3l-3.1 1.2z"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4-3.5v12l-4-3.5h-3z"/><path d="M15 9a4 4 0 0 1 0 6M17.5 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
     <symbol id="i-home3d" viewBox="0 0 24 24"><path d="M4.5 11 12 4.5l7.5 6.5M6.5 9.5v9h11v-9"/></symbol>
     <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11"/></symbol>
@@ -113,12 +118,21 @@
             </div>
           </div>
           <form class="composer" id="composer">
+            <div class="call-bar hidden" id="callBar" aria-live="polite">
+              <span class="call-orb" id="callOrb"><i></i></span>
+              <div class="call-txt"><b id="callState">…</b><span id="callHeard"></span></div>
+              <button type="button" class="icon-btn" id="callMute" data-i18n-title="callMute" title="Pausa microfono"><svg class="ic"><use href="#i-mic-off"/></svg></button>
+              <button type="button" class="icon-btn" id="callSkip" data-i18n-title="stopReading" title="Ferma lettura"><svg class="ic"><use href="#i-volume"/></svg></button>
+              <button type="button" class="btn call-end" id="callEnd"><svg class="ic s"><use href="#i-phone-off"/></svg><span data-i18n="callEnd">Termina</span></button>
+            </div>
             <div class="composer-box">
               <div class="attach-preview" id="attachPreview"></div>
               <textarea id="input" rows="1" data-i18n-placeholder="placeholder" placeholder="Chiedi al team…" aria-label="Messaggio"></textarea>
               <div class="composer-tools">
                 <label class="icon-btn attach-btn" data-i18n-title="attachImage" title="Allega immagini"><input type="file" id="attachInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden><svg class="ic"><use href="#i-clip"/></svg></label>
                 <div class="grow"><div class="collections" id="collectionChips"></div></div>
+                <button type="button" class="icon-btn" id="micBtn" data-i18n-title="voiceDictate" title="Detta"><svg class="ic"><use href="#i-mic"/></svg></button>
+                <button type="button" class="icon-btn" id="callBtn" data-i18n-title="voiceCall" title="Chiamata vocale"><svg class="ic"><use href="#i-phone"/></svg></button>
                 <button type="submit" class="send-btn" id="sendBtn" data-i18n-title="send" title="Invia" disabled><svg class="ic"><use href="#i-up"/></svg></button>
                 <button type="button" class="send-btn stop hidden" id="stopBtn" data-i18n-title="stop" title="Ferma"><svg class="ic"><use href="#i-stop"/></svg></button>
               </div>

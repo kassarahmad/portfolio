@@ -35,6 +35,7 @@ from .tools.browser import BrowserSession
 from .tools.builtin import build_registry
 from .tools.web import WebClient
 from .vision import IMAGE_EXT, Vision, sniff_image, tesseract_available
+from .voice import MAX_AUDIO, Voice
 
 log = logging.getLogger("ailocale.api")
 FRONTEND = ROOT / "frontend"
@@ -126,6 +127,7 @@ class Services:
         self.browser = BrowserSession(settings)
         self.rag = RAG(self.db, settings.data_dir / "documents", self.embedder, self.vision)
         self.tools = build_registry()
+        self.voice = Voice(settings)
         self.approvals = ApprovalManager()
         self.orch = Orchestrator(self.llm, self.tools, self.db, self.rag, settings, self.approvals,
                                  web=self.web, browser=self.browser, vision=self.vision)
@@ -363,7 +365,7 @@ async def post_message(request: Request):
         name = Path(str(a)).name
         if (s.settings.data_dir / "uploads" / name).is_file():
             attachments.append(f"uploads/{name}")
-    run_id = await s.runs.start(cid, content, cols, attachments)
+    run_id = await s.runs.start(cid, content, cols, attachments, voice=bool(data.get("voice")))
     return {"run_id": run_id}
 
 
@@ -486,6 +488,54 @@ async def artifact_site(request: Request):
                                           "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; "
                                           "frame-ancestors 'self'"}
     return FileResponse(target, media_type=media, headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# Voce
+# ---------------------------------------------------------------------------
+@api
+async def voice_status(request: Request):
+    return svc(request).voice.status()
+
+
+@api
+async def voice_transcribe(request: Request):
+    s = svc(request)
+    length = int(request.headers.get("content-length") or 0)
+    if length > MAX_AUDIO + 64 * 1024:
+        raise ApiError(413, "audio_too_large")
+    async with request.form(max_files=1, max_fields=3) as form:
+        upload = form.get("audio")
+        if upload is None or isinstance(upload, str):
+            raise ApiError(400, "audio_required")
+        audio = await upload.read(MAX_AUDIO + 1)
+        lang = str(form.get("language") or "")[:5] or None
+    if len(audio) > MAX_AUDIO:
+        raise ApiError(413, "audio_too_large")
+    if len(audio) < 200:
+        return {"text": "", "language": lang, "duration": 0}
+    try:
+        return await s.voice.transcribe(audio, lang)
+    except RuntimeError as exc:
+        raise ApiError(503, "stt_unavailable", str(exc))
+    except Exception as exc:  # noqa: BLE001
+        log.exception("trascrizione non riuscita")
+        raise ApiError(500, "stt_failed", type(exc).__name__)
+
+
+async def voice_speak(request: Request):
+    s = svc(request)
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid_json"}, status_code=400)
+    try:
+        wav = await s.voice.speak(str(data.get("text") or ""))
+    except ValueError:
+        return JSONResponse({"error": "empty_text"}, status_code=400)
+    except (RuntimeError, ImportError) as exc:
+        return JSONResponse({"error": "tts_unavailable", "detail": str(exc)}, status_code=503)
+    return Response(wav, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------------------
@@ -747,6 +797,9 @@ def create_app(settings: Settings | None = None, llm: Any = None, embedder: Any 
         Route("/api/artifacts/{aid:int}", artifact, methods=["GET", "DELETE"]),
         Route("/api/artifacts/{aid:int}/raw", artifact_raw),
         Route("/api/artifacts/{aid:int}/site/{rest:path}", artifact_site),
+        Route("/api/voice/status", voice_status),
+        Route("/api/voice/transcribe", voice_transcribe, methods=["POST"]),
+        Route("/api/voice/speak", voice_speak, methods=["POST"]),
         Route("/api/runs/{rid}", run_detail),
         Route("/api/runs/{rid}/events", run_events),
         Route("/api/runs/{rid}/cancel", cancel_run, methods=["POST"]),

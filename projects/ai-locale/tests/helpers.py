@@ -28,7 +28,7 @@ def role_of(messages: list[dict]) -> str:
         return "guardian"
     if system.startswith("You are the Critic"):
         return "critic"
-    if "Write the final answer to the user" in system or "helpful local AI assistant" in system:
+    if "Write the final answer to the user" in system or "a local AI assistant running on the user" in system:
         return "synth"
     if "A colleague (" in system:
         return "consult"

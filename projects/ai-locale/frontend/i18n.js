@@ -242,6 +242,23 @@ Object.assign(STRINGS.en, {
   sugg4: "Analyze the CSV I upload and prepare a report with charts",
 });
 
+Object.assign(STRINGS.it, {
+  voiceDictate: "Detta a voce", stopDictation: "Ferma e trascrivi", voiceCall: "Chiamata vocale con il team",
+  callListening: "Ti ascolto…", callThinking: "Il team sta pensando…", transcribing: "Trascrivo…", callSpeaking: "Rispondo…",
+  callMuted: "Microfono in pausa", callEnd: "Termina", callMute: "Pausa microfono", stopReading: "Ferma la lettura",
+  readAloud: "Leggi ad alta voce", callHint: "Parla quando vuoi: quando ti fermi, il team risponde a voce.",
+  callError: "Non sono riuscito a rispondere: guarda la chat.", micDenied: "Permesso del microfono negato: consentilo dall'icona nella barra degli indirizzi.",
+  micInsecure: "Il microfono funziona solo da http://127.0.0.1 o con HTTPS.", sttMissing: "Trascrizione non installata: esegui di nuovo setup.ps1.",
+});
+Object.assign(STRINGS.en, {
+  voiceDictate: "Dictate", stopDictation: "Stop and transcribe", voiceCall: "Voice call with the team",
+  callListening: "Listening…", callThinking: "The team is thinking…", transcribing: "Transcribing…", callSpeaking: "Answering…",
+  callMuted: "Microphone paused", callEnd: "End", callMute: "Pause microphone", stopReading: "Stop reading",
+  readAloud: "Read aloud", callHint: "Speak whenever you like: when you pause, the team answers out loud.",
+  callError: "I couldn't answer: check the chat.", micDenied: "Microphone permission denied: allow it from the icon in the address bar.",
+  micInsecure: "The microphone works only from http://127.0.0.1 or over HTTPS.", sttMissing: "Transcription not installed: run setup.ps1 again.",
+});
+
 let lang = "it";
 try { lang = localStorage.getItem("ailocale.lang") || (navigator.language || "it").slice(0, 2); } catch { /* storage non disponibile */ }
 if (!STRINGS[lang]) lang = "it";

@@ -120,4 +120,11 @@ if __name__ == "__main__":
     s.approval_timeout = 600
     app = create_app(s, llm=FakeLLM(script, delay=float(sys.argv[1]) if len(sys.argv) > 1 else 0.4),
                      embedder=FakeEmbedder())
+    voice = app.state.svc.voice
+
+    async def fake_transcribe(audio, lang):  # solo per la prova visiva: nessun modello Whisper qui
+        return {"text": "Correggi la funzione media e verificala", "language": lang, "duration": 1.0}
+    voice.transcribe = fake_transcribe
+    voice.status = lambda: {"stt": True, "stt_model": "demo", "tts": False, "tts_voice": None,
+                            "hint_stt": None, "hint_tts": None}
     uvicorn.run(app, host="127.0.0.1", port=8799, log_level="warning")
