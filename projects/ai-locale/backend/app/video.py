@@ -113,15 +113,36 @@ def cover(img, w: int, h: int):
                      (img.width - w) // 2 + w, (img.height - h) // 2 + h))
 
 
-def title_card(text: str, w: int, h: int, accent=(240, 180, 76)):
+# Sfondi per le scene senza immagine: tonalita' calde diverse, cosi' le scene non
+# sembrano tutte lo stesso fotogramma fermo.
+CARD_COLORS = [((28, 24, 20), (58, 38, 24)), ((22, 26, 30), (28, 52, 64)),
+               ((30, 22, 26), (66, 30, 42)), ((24, 28, 24), (32, 58, 40)),
+               ((30, 26, 20), (72, 52, 20)), ((24, 22, 30), (42, 34, 70))]
+
+
+def gradient(w: int, h: int, index: int = 0):
+    """Sfondo con una sfumatura verticale: discreto, e diverso per ogni scena."""
     from PIL import Image, ImageDraw
-    img = Image.new("RGB", (w, h), (24, 22, 19))
+    alto, basso = CARD_COLORS[index % len(CARD_COLORS)]
+    img = Image.new("RGB", (1, h))
+    d = ImageDraw.Draw(img)
+    for y in range(h):
+        k = y / max(h - 1, 1)
+        d.point((0, y), fill=tuple(round(a + (b - a) * k) for a, b in zip(alto, basso)))
+    return img.resize((w, h))
+
+
+def title_card(text: str, w: int, h: int, accent=(240, 180, 76), index: int = 0):
+    from PIL import Image, ImageDraw  # noqa: F401
+    img = gradient(w, h, index)
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, w, max(4, int(h * 0.012))], fill=accent)
+    if not (text or "").strip():
+        return img
     f = font(int(w * 0.075))
-    lines = wrap(text or " ", f, int(w * 0.82), d)[:6]
+    lines = wrap(text, f, int(w * 0.82), d)[:6]
     lh = int(w * 0.095)
-    y = (h - lh * len(lines)) // 2
+    y = int(h * 0.30) - lh * len(lines) // 2      # in alto: sotto ci vanno i sottotitoli
     for ln in lines:
         d.text(((w - d.textlength(ln, font=f)) / 2, y), ln, font=f, fill=(237, 235, 228))
         y += lh
@@ -290,24 +311,28 @@ class VideoStudio:
                 base = tmp / f"bg{i}.png"
                 img_path = sc.get("image")
                 card = str(sc.get("card") or sc.get("title") or "").strip()
+                # Il titolo generale vale da copertina: ripeterlo su ogni scena fa sembrare
+                # il video un fermo immagine. Dalla seconda in poi conta solo il testo della scena.
+                if not card and i == 0:
+                    card = title.strip()
                 drew_card = False
                 if img_path and Path(img_path).is_file():
                     try:
                         cover(Image.open(img_path), W, H).save(base)
                     except Exception as exc:  # noqa: BLE001
-                        notes.append(f"Scena {i + 1}: immagine illeggibile ({type(exc).__name__}), uso un cartoncino.")
-                        title_card(card or title or text, W, H).save(base)
+                        notes.append(f"Scena {i + 1}: immagine illeggibile ({type(exc).__name__}), uso uno sfondo.")
+                        title_card(card, W, H, index=i).save(base)
                         drew_card = True
                 else:
                     if img_path:
-                        notes.append(f"Scena {i + 1}: immagine non trovata, uso un cartoncino.")
-                    title_card(card or title or text, W, H).save(base)
+                        notes.append(f"Scena {i + 1}: immagine non trovata, uso uno sfondo.")
+                    title_card(card, W, H, index=i).save(base)
                     drew_card = True
 
                 # sottotitoli: blocchi con tempi proporzionali alle parole.
                 # Su un cartoncino che gia' mostra la narrazione non li imprimo (li scriverei due volte),
                 # ma restano nei file .srt/.vtt.
-                burn = captions and sc.get("captions", True) and not (drew_card and not card and not title)
+                burn = captions and sc.get("captions", True)
                 parts = chunk_words(text) if text else []
                 total_w = sum(len(p.split()) for p in parts) or 1
                 caps, t0 = [], 0.0

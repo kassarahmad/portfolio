@@ -772,7 +772,9 @@ def create_app(settings: Settings | None = None, llm: Any = None, embedder: Any 
                     await services.chat_server.start(settings.chat_model_file)
                 if settings.embed_model_file:
                     await services.embed_server.start(settings.embed_model_file)
-            except RuntimeError as exc:
+            except (RuntimeError, OSError) as exc:
+                # Niente modello non vuol dire niente applicazione: l'interfaccia deve aprirsi
+                # e spiegare il problema, invece di non avviarsi affatto.
                 log.error("avvio automatico llama-server fallito: %s", exc)
         log.info("AI Locale pronto su http://%s:%s", settings.host, settings.port)
         yield

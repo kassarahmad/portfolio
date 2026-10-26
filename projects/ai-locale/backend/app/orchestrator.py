@@ -216,6 +216,10 @@ Rules:
 - Current information (news, prices, versions, people, events) needs 'ricercatore' (web search) or
   'navigatore' (interactive browsing). Building software or files needs 'programmatore'.
 - Actions on this PC (commands, files, folders, system status, shutdown/restart/lock) need 'operatore'.
+- Making a video, a Short, a Reel, a clip or a montage - anything with scenes, narration or
+  subtitles - needs 'montatore'. No other agent can produce a video file.
+- Creating, inspecting or extracting a .zip or .tar archive needs 'operatore' (or 'programmatore'
+  for an archive of code it just wrote).
 - Only use agent ids from the team list.
 {docs_hint}
 Reply with JSON only, no other text:
@@ -230,6 +234,10 @@ Rules for every agent:
 - Use tools when they help; do not invent tool results, files, sources or numbers.
 - If you need a colleague's expertise, use ask_agent (colleagues: {colleagues}).
 - If a tool is denied or fails, adapt and explain; never try to bypass a denial.
+- Your tools are NOT programs on the PC: they are the functions listed for you, and you call them
+  directly. Never look for one with 'where', 'which', 'pip', '--help' or any shell command, and never
+  conclude that a tool is missing or must be installed because a shell command did not find it. If a
+  tool you need is not in YOUR list, a colleague has it: use ask_agent instead of giving up.
 - Only report what tool outputs actually show. Never write "tested manually", "verified", "works" or
   any output/number unless a tool in THIS task produced it. If you could not test something, say so.
 - To test an HTTP API, do it in ONE run_python call: start the server with subprocess.Popen, wait,

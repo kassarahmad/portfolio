@@ -167,6 +167,19 @@ def extract_json(text: str) -> Any:
 
 log = logging.getLogger("ailocale.llm")
 _CTX_RE = re.compile(r"request \((\d+) tokens\) exceeds the available context size \((\d+) tokens\)")
+# Ogni server dichiara il "JSON obbligatorio" a modo suo: llama.cpp vuole json_object,
+# LM Studio accetta solo json_schema o text. Si prova finche' uno viene accettato.
+_JSON_FMT_RE = re.compile(r"response_format", re.I)
+JSON_FORMATS = ("json_object", "json_schema", "none")
+
+
+def json_format_payload(style: str) -> dict | None:
+    if style == "json_object":
+        return {"type": "json_object"}
+    if style == "json_schema":
+        return {"type": "json_schema",
+                "json_schema": {"name": "risposta", "strict": False, "schema": {"type": "object"}}}
+    return None
 _CUT = "\n[... testo omesso per stare nel contesto del modello ...]\n"
 
 
@@ -203,6 +216,7 @@ class LLMClient:
         self.model = model
         self.force_vision = False  # forza la capacità visione se il server non la dichiara
         self.context_tokens = 0    # contesto per richiesta, imparato dagli errori del server
+        self.json_format = JSON_FORMATS[0]   # modo per chiedere JSON: si adatta al server
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=5.0), headers=headers, transport=transport)
@@ -228,6 +242,13 @@ class LLMClient:
                 return await self._chat(messages, tools=tools, temperature=temperature, json_mode=json_mode,
                                         on_token=on_token, max_tokens=max_tokens)
             except LLMError as exc:
+                if json_mode and _JSON_FMT_RE.search(str(exc)) and "ha risposto 4" in str(exc):
+                    i = JSON_FORMATS.index(self.json_format)
+                    if i + 1 < len(JSON_FORMATS):
+                        self.json_format = JSON_FORMATS[i + 1]
+                        log.warning("il server rifiuta response_format=%s: passo a %s",
+                                    JSON_FORMATS[i], self.json_format)
+                        continue
                 m = _CTX_RE.search(str(exc))
                 if not m or attempt == 2:
                     raise
@@ -255,7 +276,9 @@ class LLMClient:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         if json_mode:
-            payload["response_format"] = {"type": "json_object"}
+            fmt = json_format_payload(self.json_format)
+            if fmt is not None:
+                payload["response_format"] = fmt
 
         started = time.perf_counter()
         if tools:

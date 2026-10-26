@@ -200,8 +200,19 @@ class ManagedServer:
         await self.stop()
         logf = self.log_path.open("ab")
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0  # type: ignore[attr-defined]
-        self.proc = subprocess.Popen(self.build_args(path), stdout=logf, stderr=subprocess.STDOUT,
-                                     creationflags=flags)
+        try:
+            self.proc = subprocess.Popen(self.build_args(path), stdout=logf, stderr=subprocess.STDOUT,
+                                         creationflags=flags)
+        except OSError as exc:
+            logf.close()
+            extra = ""
+            if getattr(exc, "winerror", None) == 4551:
+                # Smart App Control di Windows 11 rifiuta gli eseguibili non firmati, llama-server compreso.
+                extra = (" Smart App Control di Windows ha bloccato llama-server perche' non e' firmato. "
+                         "Puoi usare un server gia' firmato (LM Studio, Ollama) impostando LLM_BASE_URL "
+                         "nel .env, oppure disattivare Smart App Control (scelta definitiva: per riattivarlo "
+                         "serve reinstallare Windows).")
+            raise RuntimeError(f"Impossibile avviare llama-server: {exc}.{extra}") from exc
         self.model_file, self.started_at = model_file, time.time()
         log.info("llama-server %s avviato (pid %s) con %s", self.name, self.proc.pid, model_file)
         return self.status()

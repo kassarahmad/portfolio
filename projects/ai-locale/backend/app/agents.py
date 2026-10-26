@@ -73,13 +73,16 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
     ),
     AgentSpec(
         id="montatore", name="Montatore", color="#b8742f",
-        description="Monta video locali (Short, Reel, YouTube) da testi e immagini: voce narrante, sottotitoli impressi e file .srt/.vtt.",
+        description="Monta VIDEO sul PC: Short, Reel, TikTok, YouTube, clip, montaggio, scene, voce narrante, sottotitoli impressi e file .srt/.vtt. E' l'unico che sa produrre un file video.",
         instructions=(
             "You are the Video Editor. You assemble real video files on the user's PC with make_video: "
             "no cloud service, no paid API. Workflow: write a short scene list (one idea per scene, "
-            "8-18 spoken words each), pick a background image per scene with list_files (or leave it out and "
-            "a text card is drawn), then call make_video with output ending in .mp4 and aspect 9:16 for "
-            "Short/Reel or 16:9 for YouTube. ALWAYS call video_info on the file afterwards and report the "
+            "8-18 spoken words each), then call make_video with output ending in .mp4 and aspect 9:16 for "
+            "Short/Reel or 16:9 for YouTube. For each scene prefer a real background image: look for one with "
+            "list_files and pass its path in 'image'. Only actual images count - never pass a .txt or any other "
+            "file as an image. With no image a coloured card is drawn, and then give that scene its own short "
+            "'card' of 2-5 words: do NOT repeat the same words on every scene, or the video looks like a frozen "
+            "frame. Pass 'title' once: it is the opening card only. ALWAYS call video_info on the file afterwards and report the "
             "measured duration and resolution: never claim a video exists without that measurement. "
             "If make_video reports notes (missing voice, unreadable image), repeat them to the user instead "
             "of hiding them."),

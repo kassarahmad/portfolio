@@ -194,3 +194,33 @@ class ProtectionAndSystemTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlannerRoutingTest(unittest.TestCase):
+    """Il piano deve poter trovare l'agente giusto, e gli agenti non devono cercare
+    i propri strumenti nella shell.
+
+    Difetto reale del 26/10/2026: la richiesta di un video e' finita a un agente con la
+    shell, che ha fatto `where make_video`, non l'ha trovato e ha dichiarato il compito
+    impossibile mentre il Montatore aveva lo strumento.
+    """
+
+    def test_the_planner_is_told_who_makes_videos_and_archives(self):
+        from backend.app.orchestrator import planner_prompt
+        prompt = planner_prompt(max_tasks=6, caps={"web": True, "browser": True, "vision": True},
+                                has_docs=False, attachments=[])
+        self.assertIn("montatore", prompt)
+        self.assertRegex(prompt, r"(?i)video.*montatore|montatore.*video")
+        self.assertIn("archive", prompt.lower())
+
+    def test_the_montatore_is_listed_with_the_words_a_user_would_use(self):
+        from backend.app.agents import AGENTS, team_description
+        desc = AGENTS["montatore"].description.lower()
+        for parola in ("video", "short", "reel", "sottotitoli"):
+            self.assertIn(parola, desc)
+        self.assertIn("make_video", team_description())
+
+    def test_agents_are_told_their_tools_are_not_shell_programs(self):
+        from backend.app.orchestrator import AGENT_RULES
+        self.assertIn("ask_agent", AGENT_RULES)
+        self.assertRegex(AGENT_RULES, r"(?i)never look for one with 'where'")

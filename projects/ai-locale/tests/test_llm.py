@@ -179,3 +179,47 @@ class ClientTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JsonFormatNegotiationTest(unittest.TestCase):
+    """Server diversi chiedono il JSON in modi diversi: il client deve adattarsi.
+
+    Difetto reale del 26/10/2026: LM Studio rifiuta response_format=json_object
+    ("must be 'json_schema' or 'text'") e l'intera richiesta falliva.
+    """
+
+    def _client(self, rifiuta: set[str]):
+        visti: list = []
+
+        def handler(request):
+            body = json.loads(request.content)
+            fmt = (body.get("response_format") or {}).get("type")
+            visti.append(fmt)
+            if fmt in rifiuta:
+                return httpx.Response(400, json={"error": "'response_format.type' must be 'json_schema' or 'text'"})
+            return httpx.Response(200, content=sse([
+                {"choices": [{"delta": {"content": "{\"ok\": true}"}}]},
+                {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}},
+            ]), headers={"content-type": "text/event-stream"})
+        c = LLMClient("http://x/v1", "m", transport=httpx.MockTransport(handler))
+        return c, visti
+
+    def test_falls_back_to_json_schema(self):
+        c, visti = self._client({"json_object"})
+        out = asyncio.run(c.chat([{"role": "user", "content": "ciao"}], json_mode=True))
+        self.assertEqual(out.content, '{"ok": true}')
+        self.assertEqual(visti, ["json_object", "json_schema"])
+        self.assertEqual(c.json_format, "json_schema")       # impara, e non riprova piu' lo stile sbagliato
+
+    def test_falls_back_to_plain_text_if_both_are_refused(self):
+        c, visti = self._client({"json_object", "json_schema"})
+        out = asyncio.run(c.chat([{"role": "user", "content": "ciao"}], json_mode=True))
+        self.assertEqual(out.content, '{"ok": true}')
+        self.assertEqual(visti, ["json_object", "json_schema", None])
+        self.assertEqual(c.json_format, "none")
+
+    def test_a_server_that_accepts_json_object_is_left_alone(self):
+        c, visti = self._client(set())
+        asyncio.run(c.chat([{"role": "user", "content": "ciao"}], json_mode=True))
+        self.assertEqual(visti, ["json_object"])
+        self.assertEqual(c.json_format, "json_object")

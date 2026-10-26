@@ -1,7 +1,10 @@
+import asyncio
 import io
 import json
 import time
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from helpers import FakeEmbedder, FakeLLM, cleanup, temp_settings
 
@@ -256,3 +259,50 @@ class ApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from backend.app.system import ManagedServer
+
+
+class StartupResilienceTest(unittest.TestCase):
+    """Se il modello non parte, AI Locale deve aprirsi lo stesso e spiegare il problema.
+
+    Difetto reale del 26/10/2026: Smart App Control di Windows ha bloccato llama-server
+    (OSError 4551) e l'intera applicazione non si avviava.
+    """
+
+    def test_a_blocked_llama_server_does_not_prevent_startup(self):
+        s, tmp = temp_settings()
+        try:
+            s.autostart_llm = True
+            s.chat_model_file = "finto.gguf"
+            s.llama_server_path = str(s.models_dir / "finto-llama-server.exe")
+            Path(s.llama_server_path).write_bytes(b"")          # cosi' `available` e' vero
+            app = create_app(s, llm=FakeLLM(script), embedder=FakeEmbedder())
+
+            async def bloccato(*a, **k):
+                raise OSError(22, "Un criterio di controllo dell'applicazione ha bloccato il file")
+            app.state.svc.chat_server.start = bloccato
+
+            with TestClient(app, base_url=BASE) as client:      # il lifespan gira qui
+                self.assertEqual(client.get("/api/me", headers=H).status_code, 200)
+        finally:
+            cleanup(tmp)
+
+    def test_the_error_message_explains_smart_app_control(self):
+        s, tmp = temp_settings()
+        try:
+            s.llama_server_path = str(s.models_dir / "finto-llama-server.exe")
+            Path(s.llama_server_path).write_bytes(b"")
+            (s.models_dir / "m.gguf").write_bytes(b"x")
+            srv = ManagedServer("chat", s, 8080, False, s.data_dir / "logs")
+            srv.build_args = lambda p: ["eseguibile-inesistente-per-il-test"]
+            blocco = OSError("bloccato")
+            blocco.winerror = 4551
+            with mock.patch("subprocess.Popen", side_effect=blocco):
+                with self.assertRaises(RuntimeError) as cm:
+                    asyncio.run(srv.start("m.gguf"))
+            self.assertIn("Smart App Control", str(cm.exception))
+            self.assertIn("LLM_BASE_URL", str(cm.exception))
+        finally:
+            cleanup(tmp)
