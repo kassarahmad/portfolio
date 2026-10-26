@@ -35,6 +35,7 @@ from .tools.browser import BrowserSession
 from .tools.builtin import build_registry
 from .tools.web import WebClient
 from .vision import IMAGE_EXT, Vision, sniff_image, tesseract_available
+from .video import VideoStudio
 from .voice import MAX_AUDIO, Voice
 
 log = logging.getLogger("ailocale.api")
@@ -128,9 +129,11 @@ class Services:
         self.rag = RAG(self.db, settings.data_dir / "documents", self.embedder, self.vision)
         self.tools = build_registry()
         self.voice = Voice(settings)
+        self.video = VideoStudio(settings)
         self.approvals = ApprovalManager()
         self.orch = Orchestrator(self.llm, self.tools, self.db, self.rag, settings, self.approvals,
-                                 web=self.web, browser=self.browser, vision=self.vision)
+                                 web=self.web, browser=self.browser, vision=self.vision,
+                                 video=self.video, voice=self.voice)
         self.runs = RunManager(self.orch, self.db)
         def port_of(url: str, default: int) -> int:
             return urlparse(url).port or default

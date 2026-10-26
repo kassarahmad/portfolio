@@ -40,6 +40,7 @@ const DESKS = {
   scrittore: { x: -7.05, z: 2.4, rot: Math.PI / 2 },
   coordinatore: { x: 5.5, z: -4.75, rot: 0, big: true },
   critico: { x: 7.0, z: -0.8, rot: -Math.PI / 2 },
+  montatore: { x: 7.0, z: 1.6, rot: -Math.PI / 2 },
 };
 const TABLE = { x: 1.0, z: 1.5, r: 1.05 };
 const LOUNGE = { x: -4.0, z: 4.2 };

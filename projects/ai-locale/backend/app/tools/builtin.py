@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import json
 import os
 import re
 import shutil
@@ -30,6 +31,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from .. import archive
+from ..video import ASPECTS as VIDEO_ASPECTS
 from .registry import Tool, ToolError, ToolRegistry, obj
 
 MAX_OUTPUT = 6000
@@ -49,6 +52,8 @@ class ToolContext:
     web: Any = None
     browser: Any = None
     vision: Any = None
+    video: Any = None
+    voice: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +515,171 @@ async def analyze_image(ctx: ToolContext, path: str, question: str = "") -> str:
         raise ToolError(str(exc)) from exc
 
 
+async def create_archive(ctx: ToolContext, paths: Any, output: str) -> str:
+    """Crea uno .zip con i file o le cartelle indicati."""
+    if isinstance(paths, str):
+        paths = [p.strip() for p in paths.split(",") if p.strip()] if "," in paths else [paths]
+    if not isinstance(paths, list) or not paths:
+        raise ToolError("Indica almeno un file o una cartella da archiviare.")
+    sources = [resolve(ctx, str(p)) for p in paths]
+    for s in sources:
+        if not s.exists():
+            raise ToolError(f"Non trovato: {display(ctx, s)}")
+    out = resolve(ctx, output)
+    if out.exists():
+        await require_approval(ctx, "create_archive", f"Sovrascrive l'archivio {display(ctx, out)}")
+    try:
+        rep = archive.create(sources, out, workdir(ctx))
+    except archive.ArchiveError as exc:
+        raise ToolError(str(exc)) from exc
+    touched = getattr(ctx.run, "touched", None) if ctx.run is not None else None
+    if isinstance(touched, set):
+        touched.add(rep["path"])
+    saved = 100 - (rep["packed_bytes"] * 100 // max(rep["source_bytes"], 1))
+    return (f"Archivio creato: {display(ctx, Path(rep['path']))} - {rep['files']} file, "
+            f"{rep['packed_bytes'] / 1_048_576:.2f} MB ({saved}% in meno dell'originale)")
+
+
+async def inspect_archive(ctx: ToolContext, path: str, limit: int = 50) -> str:
+    """Elenca il contenuto di un archivio SENZA estrarlo, segnalando i rischi."""
+    target = resolve(ctx, path)
+    if not target.is_file():
+        raise ToolError(f"Archivio '{path}' non trovato.")
+    try:
+        entries = archive.read_entries(target)
+    except archive.ArchiveError as exc:
+        raise ToolError(str(exc)) from exc
+    try:
+        info = archive.check(target, entries)
+        verdict = "Nessun problema rilevato: l'estrazione e' consentita."
+    except archive.ArchiveError as exc:
+        info = {"entries": len(entries), "files": sum(0 if e.is_dir else 1 for e in entries),
+                "total_bytes": sum(e.size for e in entries), "packed_bytes": target.stat().st_size,
+                "ratio": 0}
+        verdict = f"ARCHIVIO RIFIUTATO: {exc}"
+    limit = max(1, min(int(limit or 50), 500))
+    rows = [f"  {'[dir] ' if e.is_dir else ''}{e.name}" + ("" if e.is_dir else f"  ({e.size:,} byte)")
+            for e in entries[:limit]]
+    more = f"\n  ... e altre {len(entries) - limit} voci" if len(entries) > limit else ""
+    return (f"{display(ctx, target)}: {info['files']} file in {info['entries']} voci, "
+            f"{info['packed_bytes'] / 1_048_576:.2f} MB compressi -> "
+            f"{info['total_bytes'] / 1_048_576:.2f} MB estratti (rapporto {info['ratio']}x)\n"
+            f"{verdict}\nContenuto:\n" + "\n".join(rows) + more)
+
+
+async def extract_archive(ctx: ToolContext, path: str, destination: str = "") -> str:
+    """Estrae un archivio in una cartella, dopo aver controllato tutte le voci."""
+    target = resolve(ctx, path)
+    if not target.is_file():
+        raise ToolError(f"Archivio '{path}' non trovato.")
+    dest = resolve(ctx, destination.strip() or target.stem)
+    try:
+        info = archive.check(target)
+    except archive.ArchiveError as exc:
+        raise ToolError(str(exc)) from exc
+    await require_approval(ctx, "extract_archive",
+                           f"Estrae {display(ctx, target)} ({info['files']} file, "
+                           f"{info['total_bytes'] / 1_048_576:.1f} MB) in {display(ctx, dest)}")
+    try:
+        rep = archive.extract(target, dest)
+    except archive.ArchiveError as exc:
+        raise ToolError(str(exc)) from exc
+    touched = getattr(ctx.run, "touched", None) if ctx.run is not None else None
+    if isinstance(touched, set):
+        touched.add(str(dest))
+    first = ", ".join(rep["names"][:8]) + (" ..." if len(rep["names"]) > 8 else "")
+    return (f"Estratti {rep['extracted']} file in {display(ctx, dest)} "
+            f"({rep['total_bytes'] / 1_048_576:.1f} MB): {first}")
+
+
+async def make_video(ctx: ToolContext, scenes: Any, output: str, aspect: str = "9:16",
+                     title: str = "", narrate: bool = True, captions: bool = True,
+                     music: str = "") -> str:
+    """Monta un video verticale/orizzontale da scene di testo e immagini, con voce e sottotitoli."""
+    if ctx.video is None:
+        raise ToolError("Il montaggio video non e' disponibile in questa installazione.")
+    st = ctx.video.status()
+    if not st.get("ffmpeg"):
+        raise ToolError(st.get("hint") or "ffmpeg non disponibile.")
+    if isinstance(scenes, str):
+        try:
+            scenes = json.loads(scenes)
+        except json.JSONDecodeError as exc:
+            raise ToolError("Il parametro 'scenes' deve essere una lista JSON di scene.") from exc
+    if isinstance(scenes, dict):
+        scenes = [scenes]
+    if not isinstance(scenes, list) or not scenes:
+        raise ToolError("Servono almeno una scena: [{\"narration\": \"...\", \"image\": \"foto.jpg\"}]")
+
+    prepared: list[dict] = []
+    for i, raw in enumerate(scenes):
+        if isinstance(raw, str):
+            raw = {"narration": raw}
+        if not isinstance(raw, dict):
+            raise ToolError(f"Scena {i + 1} non valida: usa un oggetto con 'narration' e opzionalmente 'image'.")
+        sc = dict(raw)
+        img = str(sc.get("image") or "").strip()
+        if img:
+            target = _image_path(ctx, img)          # stesse regole di sicurezza delle immagini
+            sc["image"] = str(target)
+        prepared.append(sc)
+
+    out = resolve(ctx, output)
+    if out.suffix.lower() != ".mp4":
+        out = out.with_suffix(".mp4")
+    if out.exists():
+        await require_approval(ctx, "make_video", f"Sovrascrive il video {display(ctx, out)}")
+    track = None
+    if music.strip():
+        track = resolve(ctx, music)
+        if not track.is_file():
+            raise ToolError(f"Traccia audio '{music}' non trovata.")
+
+    try:
+        report = await ctx.video.make(scenes=prepared, out_path=out, workdir=workdir(ctx), aspect=aspect,
+                                      voice=(ctx.voice if narrate else None), music=track, title=title,
+                                      captions=captions)
+    except (RuntimeError, ValueError) as exc:
+        raise ToolError(f"Montaggio non riuscito: {exc}") from exc
+
+    touched = getattr(ctx.run, "touched", None) if ctx.run is not None else None
+    if isinstance(touched, set):
+        touched.add(str(out))
+        for extra in report.get("subtitles", []):
+            touched.add(extra)
+
+    m = report.get("measured") or {}
+    parts = [f"Video montato: {display(ctx, out)}",
+             f"scene: {report['scenes_used']}/{report['scenes']}",
+             f"durata: {m.get('seconds', report.get('planned_seconds'))} s (misurata con ffprobe)"
+             if m.get("seconds") else f"durata prevista: {report.get('planned_seconds')} s",
+             f"risoluzione: {m.get('width') or report['width']}x{m.get('height') or report['height']}",
+             f"video: {m.get('video_codec') or 'h264'}, audio: {m.get('audio_codec') or 'nessuno'}",
+             f"peso: {report['size_bytes'] / 1_048_576:.1f} MB",
+             f"voce: {'si' if report.get('voice') else 'no'}",
+             f"sottotitoli: {report.get('cues', 0)} blocchi"
+             + (f" ({', '.join(Path(s).name for s in report['subtitles'])})" if report.get("subtitles") else "")]
+    for n in report.get("notes", []):
+        parts.append(f"nota: {n}")
+    return "\n".join(parts)
+
+
+async def video_info(ctx: ToolContext, path: str) -> str:
+    """Misura un file video/audio con ffprobe: serve a verificare davvero il risultato."""
+    if ctx.video is None:
+        raise ToolError("Il montaggio video non e' disponibile in questa installazione.")
+    target = resolve(ctx, path)
+    if not target.is_file():
+        raise ToolError(f"File '{path}' non trovato.")
+    try:
+        info = await ctx.video.probe(target)
+    except RuntimeError as exc:
+        raise ToolError(str(exc)) from exc
+    return (f"{display(ctx, target)}: {info['seconds']} s, {info['width']}x{info['height']} a {info['fps']} fps, "
+            f"video {info['video_codec']}, audio {info['audio_codec'] or 'nessuno'}, "
+            f"{info['size_bytes'] / 1_048_576:.1f} MB")
+
+
 def _image_path(ctx: ToolContext, path: str) -> Path:
     path = (path or "").strip()
     if path.startswith("uploads/"):
@@ -685,4 +855,34 @@ def build_registry() -> ToolRegistry:
         {"question": s}, browser_screenshot, risk="network")
     add("analyze_image", "Analizza un'immagine (allegato 'uploads/...' o file autorizzato) con il modello di visione.",
         {"path": s, "question": s}, analyze_image, required=["path"])
+    add("make_video", "Monta un video locale (Short/Reel o orizzontale) da scene di testo e immagini: "
+        "zoom lento, voce narrante, sottotitoli impressi piu' file .srt e .vtt. Tutto sul PC, senza servizi esterni.",
+        {"scenes": {"type": "array", "description":
+            "Lista di scene in ordine. Ogni scena: {\"narration\": testo letto e sottotitolato, "
+            "\"image\": percorso immagine di sfondo (opzionale: senza immagine disegna un cartoncino), "
+            "\"seconds\": durata forzata (opzionale, altrimenti la decide la voce)}",
+            "items": {"type": "object"}},
+         "output": {**s, "description": "percorso del file .mp4 da creare nella cartella di lavoro"},
+         "aspect": {**s, "enum": list(VIDEO_ASPECTS), "description": "9:16 per Short/Reel, 16:9 per YouTube"},
+         "title": {**s, "description": "titolo usato nei cartoncini senza immagine"},
+         "narrate": {"type": "boolean", "description": "legge la narrazione con la voce locale (default true)"},
+         "captions": {"type": "boolean", "description": "imprime i sottotitoli nel video (default true)"},
+         "music": {**s, "description": "traccia musicale di sottofondo opzionale, a volume basso"}},
+        make_video, risk="write", required=["scenes", "output"])
+    add("create_archive", "Crea un archivio .zip con file o cartelle della cartella di lavoro.",
+        {"paths": {"type": "array", "items": s, "description": "file e cartelle da includere"},
+         "output": {**s, "description": "percorso del file .zip da creare"}},
+        create_archive, risk="write", required=["paths", "output"])
+    add("inspect_archive", "Elenca il contenuto di un archivio (.zip, .tar, .tar.gz) SENZA estrarlo e segnala "
+        "percorsi pericolosi o rapporti di compressione da 'zip bomb'.",
+        {"path": s, "limit": {**i, "description": "quante voci elencare (default 50)"}},
+        inspect_archive, required=["path"])
+    add("extract_archive", "Estrae un archivio in una cartella dopo aver controllato ogni voce. "
+        "Rifiuta percorsi che escono dalla cartella e archivi che si espandono troppo. Richiede approvazione.",
+        {"path": s, "destination": {**s, "description": "cartella di destinazione, default il nome dell'archivio"}},
+        extract_archive, risk="write", required=["path"],
+        preview=lambda a: f"Estrae {a.get('path', '')} in {a.get('destination') or '(cartella omonima)'}")
+    add("video_info", "Misura un video o un audio con ffprobe: durata, risoluzione, fps, codec, peso. "
+        "Serve a verificare il risultato invece di darlo per buono.",
+        {"path": s}, video_info, required=["path"])
     return r

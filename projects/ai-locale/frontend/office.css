@@ -27,10 +27,10 @@
 
 .office-root { container-type: inline-size; }
 .floor { position: relative; display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-areas: "coordinatore coordinatore ricercatore analista" "coordinatore coordinatore navigatore visione" "scrittore programmatore operatore critico" "board board board board"; }
+  grid-template-areas: "coordinatore coordinatore ricercatore analista" "coordinatore coordinatore navigatore visione" "scrittore montatore programmatore operatore" "critico board board board"; }
 @container (max-width: 600px) {
   .floor { grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas: "coordinatore coordinatore" "ricercatore analista" "navigatore visione" "board board" "programmatore operatore" "scrittore critico"; }
+    grid-template-areas: "coordinatore coordinatore" "ricercatore analista" "navigatore visione" "board board" "programmatore operatore" "scrittore montatore" "critico critico"; }
 }
 .dept-tag { font-size: 9.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 0 6px; margin-left: auto; margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .office { background: var(--o-room); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; position: relative; transition: box-shadow .3s, border-color .3s, transform .3s; display: flex; flex-direction: column; min-width: 0; }

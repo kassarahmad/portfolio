@@ -4,6 +4,7 @@ import { esc, renderMarkdown } from "./markdown.js";
 export const KIND_ICON = {
   document: "i-doc", code: "i-code", html: "i-globe", data: "i-table", image: "i-image",
   pdf: "i-doc", slides: "i-slides", archive: "i-archive", other: "i-file",
+  video: "i-video", audio: "i-audio", subtitles: "i-doc",
 };
 export const icon = (id, cls = "") => `<svg class="ic ${cls}"><use href="#${id}"/></svg>`;
 export const kindIcon = (kind, cls = "") => icon(KIND_ICON[kind] || "i-file", cls);
@@ -122,7 +123,7 @@ export async function openArtifact(container, id, { api, t, onClose, toast, fmtW
           ${canToggle ? `<div class="seg" data-mode><button data-m="preview" class="on">${icon("i-eye", "s")}${t("vPreview")}</button><button data-m="source">${icon("i-code", "s")}${t("vSource")}</button></div>` : ""}
           ${textual ? `<button class="icon-btn" data-copy-all title="${t("copyContent")}">${icon("i-copy")}</button>` : ""}
           <a class="icon-btn" href="${raw}?download=1" title="${t("download")}">${icon("i-download")}</a>
-          ${["html", "image", "pdf"].includes(art.kind) ? `<a class="icon-btn" href="${art.kind === "html" ? site : raw}" target="_blank" rel="noopener" title="${t("openNew")}">${icon("i-external")}</a>` : ""}
+          ${["html", "image", "pdf", "video", "audio"].includes(art.kind) ? `<a class="icon-btn" href="${art.kind === "html" ? site : raw}" target="_blank" rel="noopener" title="${t("openNew")}">${icon("i-external")}</a>` : ""}
           ${onClose ? `<button class="icon-btn" data-close title="${t("close")}">${icon("i-x")}</button>` : ""}
         </div>
       </div>
@@ -143,6 +144,15 @@ export async function openArtifact(container, id, { api, t, onClose, toast, fmtW
         break;
       case "pdf":
         body.innerHTML = `<iframe src="${raw}" title="${esc(name)}"></iframe>`;
+        break;
+      case "video":
+        body.innerHTML = `<div class="media-wrap"><video src="${raw}" controls playsinline preload="metadata"></video></div>`;
+        break;
+      case "audio":
+        body.innerHTML = `<div class="media-wrap audio"><audio src="${raw}" controls preload="metadata"></audio></div>`;
+        break;
+      case "subtitles":
+        body.innerHTML = codeView(c.text || "", "");
         break;
       case "code":
         body.innerHTML = codeView(c.text || "", c.lang);

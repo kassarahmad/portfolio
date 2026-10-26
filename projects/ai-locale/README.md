@@ -1,7 +1,7 @@
 # AI Locale — Home AI Assistant multi-agente
 
 Un team di agenti AI che gira **interamente sul tuo PC**: un Coordinatore pianifica il lavoro,
-cinque agenti specializzati lo eseguono in parallelo usando strumenti reali, un Critico lo
+otto agenti specializzati lo eseguono in parallelo usando strumenti reali, un Critico lo
 revisiona, e tu approvi ogni azione che tocca il computer. Nessun dato esce dal PC.
 
 ```
@@ -25,7 +25,7 @@ revisiona, e tu approvi ogni azione che tocca il computer. Nessun dato esce dal 
 
 | Area | Cosa fa |
 |---|---|
-| **Team di 9 agenti** | Coordinatore, Ricercatore, Programmatore, Analista, Scrittore, Operatore, Navigatore, Visione, Critico. Pianificano, lavorano in parallelo, si consultano, il Critico fa correggere |
+| **Team di 10 agenti** | Coordinatore, Ricercatore, Programmatore, Analista, Scrittore, Operatore, Navigatore, Visione, Montatore, Critico. Pianificano, lavorano in parallelo, si consultano, il Critico fa correggere |
 | **Web** | Ricerca aggiornata con fonti, lettura di pagine e PDF online, **browser automatico** che apre siti, clicca e compila moduli (invii solo con approvazione) |
 | **Visione** | Analizza foto e screenshot allegati in chat (trascina, incolla o 📎), legge documenti scansionati (OCR) |
 | **File e progetti** | Crea interi progetti (cartelle, codice, test), li esegue, legge Word/Excel/PowerPoint/PDF, sposta e rinomina; backup prima di sovrascrivere, cestino invece di cancellare |

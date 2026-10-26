@@ -8,7 +8,8 @@ import { esc } from "./markdown.js";
 // Reparti dell'azienda (mostrati sulla porta di ogni ufficio)
 const DEPT_OF = {
   coordinatore: "direzione", ricercatore: "ricerca", analista: "ricerca",
-  programmatore: "sviluppo", operatore: "sviluppo", scrittore: "comunicazione", critico: "qualita",
+  programmatore: "sviluppo", operatore: "sviluppo", scrittore: "comunicazione",
+  montatore: "comunicazione", critico: "qualita",
   navigatore: "ricerca", visione: "ricerca",
 };
 
@@ -23,11 +24,13 @@ const LOOKS = {
   critico: { skin: "#ffe0bd", hair: "#9e9e9e", style: "bald", extra: "glasses" },
   navigatore: { skin: "#d9a066", hair: "#3b2a1a", style: "cap", extra: "" },
   visione: { skin: "#f5d0b0", hair: "#5e2d79", style: "long", extra: "glasses" },
+  montatore: { skin: "#c68642", hair: "#241a12", style: "bun", extra: "headphones" },
 };
 
 const DECOR = {
   coordinatore: "chart", ricercatore: "books", programmatore: "poster", analista: "chart",
   scrittore: "plant", operatore: "rack", critico: "clock", navigatore: "poster", visione: "chart",
+  montatore: "poster",
 };
 
 function hairSvg(look) {

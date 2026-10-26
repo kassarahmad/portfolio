@@ -26,6 +26,7 @@ class FakeRun:
         self.collections = []
         self.blackboard = Blackboard()
         self.sources = {}
+        self.touched = set()      # come il RunContext vero: file toccati = artefatti
 
     def add_source(self, h):
         pass

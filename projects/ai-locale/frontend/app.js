@@ -868,7 +868,7 @@ function artifactRow(a, { showProject = true, onOpen } = {}) {
 }
 
 async function loadArtifactLibrary() {
-  const kinds = ["", "document", "code", "html", "data", "image", "archive"];
+  const kinds = ["", "document", "code", "html", "data", "image", "video", "archive"];
   const seg = $("#artKinds");
   if (!seg.childElementCount) {
     seg.innerHTML = kinds.map((k) => `<button data-k="${k}">${k ? t(`kindsF_${k}`) : t("kind_all")}</button>`).join("");

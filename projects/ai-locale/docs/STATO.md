@@ -1,6 +1,6 @@
 # Stato delle funzionalità, test e sicurezza
 
-Aggiornato al 26/10/2026 (milestone M0).
+Aggiornato al 26/10/2026 (milestone M0, M3, M4).
 
 ## M0 - Coerenza del registro strumenti (26/10/2026)
 
@@ -22,6 +22,55 @@ del `ToolContext` non viene mai valorizzato dall'orchestratore.
 Test: **84 superati** (81 di baseline + 3 nuovi), eseguiti su Linux. Windows, GPU e voce reale restano
 da verificare sul PC.
 
+## M3 - Montaggio video locale (26/10/2026)
+
+Nuovo modulo `backend/app/video.py` e nuovo agente **Montatore**. Monta un vero MP4 sul PC a partire
+da scene di testo e immagini: zoom lento alternato, voce narrante Piper, sottotitoli impressi e file
+`.srt` + `.vtt` con tempi globali. Nessun servizio esterno, nessuna API a pagamento.
+
+- Strumenti: `make_video` (produce) e `video_info` (misura). Il Montatore deve **sempre** misurare il
+  file prodotto: il Critico basato sulle prove rifiuta un "video creato" senza la misura.
+- ffmpeg arriva da `imageio-ffmpeg` (in `requirements.txt`). `ffprobe` e' **facoltativo**: se manca
+  (Windows con il solo pacchetto Python) la misura viene letta dall'intestazione che stampa ffmpeg.
+- Limiti: 40 scene, 15 minuti, 120 s per scena. Le immagini passano dagli stessi controlli di percorso
+  degli altri strumenti; sovrascrivere un video esistente richiede approvazione.
+- L'interfaccia riconosce i tipi `video`, `audio` e `subtitles`: il video si guarda nel visualizzatore
+  degli artefatti, il `.srt` si legge accanto.
+
+**La generazione AI di immagini e clip non fa parte di M3**: resta in `wip/media.py` per M2.
+
+## M4 - Archivi sicuri (26/10/2026)
+
+Nuovo modulo `backend/app/archive.py` e tre strumenti per Operatore e Programmatore: `create_archive`,
+`inspect_archive`, `extract_archive` (.zip, .tar, .tar.gz/.bz2/.xz).
+
+Un archivio e' **dato non fidato**. Prima di scrivere un solo byte vengono rifiutati: percorsi che
+risalgono (`../`, zip-slip), percorsi assoluti, lettere di unita' (`C:\...`), nomi con byte nullo,
+collegamenti simbolici nei tar, archivi corrotti, oltre 20.000 voci, oltre 4 GB estratti, singole voci
+oltre 2 GB e rapporti di espansione sopra 200x ("zip bomb"). Se **una sola** voce e' sospetta non si
+estrae nulla. Il rapporto si misura su quanto l'archivio si espande, non su quanto pesa: 60 MB di zeri
+stanno in 60 KB, e un limite sul compresso li lascerebbe passare.
+
+L'estrazione richiede approvazione (dell'utente o, in modalita' autonoma, del Critico) e all'Operatore
+e' chiesto di ispezionare sempre prima di estrarre.
+
+## Test eseguiti in M3 e M4
+
+**134 superati** su Linux (84 dopo M0, +25 video, +25 archivi), eseguiti davvero, non dichiarati:
+
+- `tests/test_video.py` produce MP4 reali e li rimisura con ffprobe (durata, risoluzione, fps, codec,
+  peso), verifica i tempi globali dei sottotitoli, la misura senza ffprobe, l'immagine mancante
+  segnalata invece che nascosta, i limiti, la pulizia dei file temporanei e i confini della cartella.
+- `tests/test_archive.py` costruisce archivi **davvero malevoli** (zip-slip, percorso assoluto,
+  `C:\Windows\...`, symlink in un tar, bomba da 60 MB in 60 KB) e verifica che vengano rifiutati, piu'
+  i giri completi zip e tar.gz.
+- Verifica visiva in Chromium: il video prodotto si riproduce nel visualizzatore (9:16, sottotitoli
+  impressi, 0:04) con il `.srt` elencato accanto, e la decima scrivania del Montatore compare
+  nell'ufficio 2D senza errori di pagina.
+
+Restano da verificare **sul tuo PC**: Windows, GPU, e la voce reale (Whisper + Piper) con
+`scripts\voice.ps1` - qui la voce non e' installata, quindi i video di prova sono senza parlato.
+
 ## Legenda
 - ✅ **Funziona e testato** qui con test automatici o con un vero browser
 - 🟡 **Implementato, da verificare sul tuo PC** (serve GPU, modelli reali o Windows)
@@ -33,7 +82,7 @@ da verificare sul PC.
 |---|---|---|
 | Motore multi-agente (piano, parallelo, dipendenze, lavagna, consultazioni, Critico) | ✅ | 11 test con modello finto deterministico |
 | Qualità reale delle risposte | 🟡 | Dipende dal modello (Qwen3-VL-8B consigliato): da valutare sul PC |
-| 9 agenti: Coordinatore, Ricercatore, Programmatore, Analista, Scrittore, Operatore, **Navigatore**, **Visione**, Critico | ✅ | Ognuno con strumenti, prompt e stato propri |
+| 10 agenti: Coordinatore, Ricercatore, Programmatore, Analista, Scrittore, Operatore, **Navigatore**, **Visione**, **Montatore**, Critico | ✅ | Ognuno con strumenti, prompt e stato propri |
 | File e progetti: leggere, cercare, creare cartelle/file, sovrascrivere con diff+backup, spostare, cestino | ✅ | Solo cartella di lavoro + cartelle autorizzate |
 | Lettura PDF, DOCX, XLSX, PPTX, CSV | ✅ | |
 | Esecuzione Python e comandi con approvazione | ✅ | Bloccati comandi distruttivi e lettura `.env` |
@@ -50,7 +99,10 @@ da verificare sul PC.
 | Script PowerShell (setup, start, stop, backup, update) | 🟡 | Scritti con cura, non eseguibili in questo ambiente |
 | Modalità locale rigorosa (nessun LLM cloud) | ✅ | |
 | Email, calendario, Drive, Slack, WhatsApp | ❌ | Roadmap: connettori disattivati per default con OAuth e conferma d'invio |
-| Audio (trascrizione, voce) | ❌ | Roadmap: whisper.cpp locale |
+| Audio (trascrizione, voce) | 🟡 | faster-whisper + Piper integrati; da verificare sul PC con `scripts\voice.ps1` |
+| Montaggio video locale con sottotitoli SRT/VTT | ✅ | MP4 prodotti e rimisurati con ffprobe nei test |
+| Archivi .zip/.tar sicuri (crea, ispeziona, estrai) | ✅ | Testati contro zip-slip, percorsi assoluti, symlink e zip bomb |
+| Generazione AI di immagini e video | ❌ | M2: `wip/media.py` pronto, servono i modelli (~8 GB) |
 | Automazione di app desktop native di Windows | ❌ | Roadmap: richiede uno strumento tipo pywinauto e test dedicati |
 | Sandbox isolata per il codice | ❌ | Oggi: approvazione umana + blocchi + timeout. Roadmap: container/utente dedicato |
 | Agenti Security, DevOps, Database, Audio | ❌ | Roadmap (si aggiungono in `agents.py`) |

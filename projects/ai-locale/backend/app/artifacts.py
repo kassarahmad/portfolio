@@ -33,9 +33,15 @@ for _ext in (".csv", ".tsv", ".xlsx", ".xls"):
 for _ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"):
     KINDS[_ext] = "image"
 KINDS[".pdf"] = "pdf"
+for _ext in (".mp4", ".webm", ".mov", ".mkv"):
+    KINDS[_ext] = "video"
+for _ext in (".mp3", ".wav", ".m4a", ".ogg", ".flac"):
+    KINDS[_ext] = "audio"
+for _ext in (".srt", ".vtt"):
+    KINDS[_ext] = "subtitles"
 for _ext in (".pptx",):
     KINDS[_ext] = "slides"
-for _ext in (".zip", ".tar", ".gz", ".tgz", ".7z", ".rar"):
+for _ext in (".zip", ".tar", ".gz", ".tgz", ".7z", ".rar", ".tbz2", ".txz"):
     KINDS[_ext] = "archive"
 
 LANGS = {".py": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".ts": "typescript",
@@ -49,7 +55,9 @@ MIME = {".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
         ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
         ".bmp": "image/bmp", ".pdf": "application/pdf", ".css": "text/plain; charset=utf-8",
         ".js": "text/plain; charset=utf-8", ".json": "application/json", ".csv": "text/plain; charset=utf-8",
-        ".zip": "application/zip"}
+        ".zip": "application/zip", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+        ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".ogg": "audio/ogg",
+        ".srt": "text/plain; charset=utf-8", ".vtt": "text/vtt; charset=utf-8"}
 
 
 def project_dir(workspace: Path, project: dict) -> Path:
@@ -146,8 +154,11 @@ def preview(path: Path, kind: str, read_document: Any = None) -> dict:
         except zipfile.BadZipFile:
             out["error"] = "zip non valido"
         return out
-    if kind in ("image", "pdf"):
-        return out  # il browser lo mostra dall'URL del file
+    if kind == "subtitles":
+        out["text"] = path.read_bytes()[:MAX_TEXT].decode("utf-8", errors="replace")
+        return out
+    if kind in ("image", "pdf", "video", "audio"):
+        return out  # il browser lo mostra o lo riproduce dall'URL del file
     if read_document is not None and kind in ("document", "data", "slides"):
         out["text"] = read_document(path)[:MAX_TEXT]
         out["converted"] = True

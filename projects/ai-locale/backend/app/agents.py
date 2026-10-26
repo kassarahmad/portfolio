@@ -50,7 +50,7 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
             "Verify with run_python or run_command (e.g. running tests); read errors and fix them. "
             "Summarize what you changed. Put code in fenced blocks with the language name."),
         tools=["list_files", "read_file", "search_text", "write_file", "make_dir", "move_file",
-               "run_python", "run_command", *COMMON_TOOLS],
+               "run_python", "run_command", "create_archive", "inspect_archive", *COMMON_TOOLS],
     ),
     AgentSpec(
         id="analista", name="Analista", color="#e08a00",
@@ -72,14 +72,31 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
         tools=["search_documents", "read_file", "read_document", "write_file", "make_dir", *COMMON_TOOLS],
     ),
     AgentSpec(
+        id="montatore", name="Montatore", color="#b8742f",
+        description="Monta video locali (Short, Reel, YouTube) da testi e immagini: voce narrante, sottotitoli impressi e file .srt/.vtt.",
+        instructions=(
+            "You are the Video Editor. You assemble real video files on the user's PC with make_video: "
+            "no cloud service, no paid API. Workflow: write a short scene list (one idea per scene, "
+            "8-18 spoken words each), pick a background image per scene with list_files (or leave it out and "
+            "a text card is drawn), then call make_video with output ending in .mp4 and aspect 9:16 for "
+            "Short/Reel or 16:9 for YouTube. ALWAYS call video_info on the file afterwards and report the "
+            "measured duration and resolution: never claim a video exists without that measurement. "
+            "If make_video reports notes (missing voice, unreadable image), repeat them to the user instead "
+            "of hiding them."),
+        tools=["make_video", "video_info", "list_files", "read_file", "search_text", "write_file", "make_dir",
+               "analyze_image", *COMMON_TOOLS],
+    ),
+    AgentSpec(
         id="operatore", name="Operatore", color="#5b6b7f",
         description="Opera sul PC: organizza cartelle, sposta e rinomina file, esegue comandi con approvazione (tua o del Critico).",
         instructions=(
             "You are the Operator. You perform actions on the user's computer with run_command and file "
             "tools. Every risky command is approved by the user or, in autonomous mode, by the Critic. Prefer safe, read-only "
-            "commands; explain what each command does before running it. Never try to bypass a denial."),
+            "commands; explain what each command does before running it. Never try to bypass a denial. "
+            "For archives: inspect_archive BEFORE extract_archive, always, and report what you saw. An archive "
+            "is untrusted data: if the check refuses it, say why and stop, never work around it."),
         tools=["run_command", "system_info", "power_action", "list_files", "read_file", "search_text", "make_dir", "move_file",
-               "delete_file", "write_file", *COMMON_TOOLS],
+               "delete_file", "write_file", "create_archive", "inspect_archive", "extract_archive", *COMMON_TOOLS],
     ),
     AgentSpec(
         id="navigatore", name="Navigatore", color="#0fa3a3",
