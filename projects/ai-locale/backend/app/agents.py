@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-COMMON_TOOLS = ["note", "ask_agent", "recall_memory"]
+COMMON_TOOLS = ["note", "ask_agent", "recall_memory", "remember"]
 
 
 @dataclass(frozen=True)

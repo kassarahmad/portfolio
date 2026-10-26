@@ -417,5 +417,45 @@ class StrictLocalTest(unittest.TestCase):
             cleanup(tmp)
 
 
+class RegistryCoherenceTest(unittest.TestCase):
+    """Difende dal difetto corretto in M0: strumenti registrati ma irraggiungibili.
+
+    L'orchestratore offre al modello solo gli strumenti elencati nell'agente
+    (orchestrator.run_agent -> tools.schemas(spec.tools)) e rifiuta gli altri
+    (_call_tool: "non e' disponibile per questo agente"). Uno strumento registrato
+    che nessun agente possiede e' codice morto che la pagina Strumenti mostra
+    comunque all'utente.
+    """
+
+    def setUp(self):
+        from backend.app.agents import AGENTS
+        self.registry = builtin.build_registry()
+        self.owned = {name for a in AGENTS.values() for name in a.tools}
+
+    def test_every_registered_tool_belongs_to_an_agent(self):
+        orphans = sorted(set(self.registry.tools) - self.owned)
+        self.assertEqual(orphans, [], f"strumenti registrati che nessun agente puo' usare: {orphans}")
+
+    def test_every_agent_tool_exists_in_the_registry(self):
+        missing = sorted(self.owned - set(self.registry.tools))
+        self.assertEqual(missing, [], f"agenti che elencano strumenti inesistenti: {missing}")
+
+    def test_tool_context_has_no_unused_dependency_fields(self):
+        """Ogni campo opzionale del ToolContext deve essere valorizzato da qualcuno.
+
+        Se un campo esiste ma nessuno lo passa, gli strumenti che lo usano falliscono
+        sempre a runtime: e' il secondo anello del difetto M0.
+        """
+        import dataclasses
+        from pathlib import Path as _P
+        optional = {f.name for f in dataclasses.fields(builtin.ToolContext)
+                    if f.default is None and f.name != "approve"}
+        src = (_P(__file__).resolve().parents[1] / "backend" / "app" / "orchestrator.py").read_text(encoding="utf-8")
+        start = src.index("return ToolContext(")
+        call = src[start:src.index(")", src.index("vision", start))]
+        unset = sorted(n for n in optional if f"{n}=" not in call)
+        self.assertEqual(unset, [], f"campi di ToolContext mai valorizzati dall'orchestratore: {unset}")
+
+
 if __name__ == "__main__":
     unittest.main()

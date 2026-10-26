@@ -295,7 +295,7 @@ When unsure, DENY and suggest a safer alternative.
 Reply with JSON only: {"approve": true, "reason": "one short sentence in the user's language"}"""
 
 # Azioni che restano all'utente anche in modalità autonoma: agiscono su siti di terzi
-HUMAN_ONLY_TOOLS = {"browser_click", "browser_type", "power_action"}
+HUMAN_ONLY_TOOLS = {"browser_click", "browser_type", "power_action", "remember"}
 _EXTERNAL_URL = re.compile(r"https?://(?!(?:localhost|127\.0\.0\.1|\[::1\])(?:[:/]|$))", re.I)
 _NET_CMD = re.compile(r"\b(invoke-webrequest|invoke-restmethod|iwr|irm|curl|wget|start-bitstransfer|"
                       r"scp|sftp|ftp|ssh|urlopen|requests\.(get|post|put)|httpx\.)", re.I)

@@ -1,6 +1,26 @@
 # Stato delle funzionalità, test e sicurezza
 
-Aggiornato alla versione con ufficio 3D, web, visione e OCR.
+Aggiornato al 26/10/2026 (milestone M0).
+
+## M0 - Coerenza del registro strumenti (26/10/2026)
+
+Due difetti corretti, entrambi della stessa famiglia: **strumenti dichiarati che nessuno poteva usare**.
+
+1. **Immagini e video.** `backend/app/media.py` e tre strumenti (`generate_image`, `generate_video_clip`,
+   `make_video`) erano registrati ma irraggiungibili: nessun agente li aveva in lista, `ctx.media` non
+   veniva mai valorizzato e `MediaStudio` non veniva mai costruito. La pagina Strumenti li mostrava
+   comunque come *attivi*. Il modulo e' stato **spostato in `wip/media.py`** (conservato, non eliminato)
+   e le registrazioni rimosse. Torneranno con M2 (immagini locali) e M3 (montaggio video con ffmpeg).
+2. **Memoria.** Lo strumento `remember` era registrato ma non assegnato a nessun agente, mentre
+   l'interfaccia prometteva che *"gli agenti possono proporre di salvarne di nuove"*. Ora e' in
+   `COMMON_TOOLS` e resta **sempre approvato dall'utente**, anche in modalita' autonoma.
+
+Protezione contro le recidive: `tests/test_tools.py::RegistryCoherenceTest` fallisce se uno strumento
+registrato non appartiene a nessun agente, se un agente cita uno strumento inesistente o se un campo
+del `ToolContext` non viene mai valorizzato dall'orchestratore.
+
+Test: **84 superati** (81 di baseline + 3 nuovi), eseguiti su Linux. Windows, GPU e voce reale restano
+da verificare sul PC.
 
 ## Legenda
 - ✅ **Funziona e testato** qui con test automatici o con un vero browser
