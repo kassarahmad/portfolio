@@ -35,6 +35,7 @@ from .tools.browser import BrowserSession
 from .tools.builtin import build_registry
 from .tools.web import WebClient
 from .vision import IMAGE_EXT, Vision, sniff_image, tesseract_available
+from .genera import Studio as GenStudio
 from .video import VideoStudio
 from .voice import MAX_AUDIO, Voice
 
@@ -130,10 +131,11 @@ class Services:
         self.tools = build_registry()
         self.voice = Voice(settings)
         self.video = VideoStudio(settings)
+        self.genera = GenStudio(settings)
         self.approvals = ApprovalManager()
         self.orch = Orchestrator(self.llm, self.tools, self.db, self.rag, settings, self.approvals,
                                  web=self.web, browser=self.browser, vision=self.vision,
-                                 video=self.video, voice=self.voice)
+                                 video=self.video, voice=self.voice, genera=self.genera)
         self.runs = RunManager(self.orch, self.db)
         def port_of(url: str, default: int) -> int:
             return urlparse(url).port or default
@@ -141,6 +143,8 @@ class Services:
                                          settings.data_dir / "logs")
         self.embed_server = ManagedServer("embed", settings, port_of(settings.embed_base_url, 8081), True,
                                           settings.data_dir / "logs")
+        # Il cancello della VRAM deve poter fermare llama-server quando e' AI Locale a gestirlo.
+        self.genera.gate.chat_server = self.chat_server
         self.login_failures: dict[str, list[float]] = {}
 
 

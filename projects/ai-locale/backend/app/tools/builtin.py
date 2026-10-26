@@ -54,6 +54,7 @@ class ToolContext:
     vision: Any = None
     video: Any = None
     voice: Any = None
+    genera: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +516,71 @@ async def analyze_image(ctx: ToolContext, path: str, question: str = "") -> str:
         raise ToolError(str(exc)) from exc
 
 
+async def genera_immagine(ctx: ToolContext, prompt: str, output: str, size: str = "verticale",
+                          steps: int = 8, negative: str = "", seed: int = -1) -> str:
+    """Genera un'immagine sul PC, senza servizi esterni."""
+    if ctx.genera is None:
+        raise ToolError("La generazione locale non e' disponibile in questa installazione.")
+    st = ctx.genera.status()
+    if not st.get("images"):
+        raise ToolError(st.get("hint") or
+                        f"Modelli per le immagini non pronti: {', '.join(st.get('missing_images') or [])}")
+    if not (prompt or "").strip():
+        raise ToolError("Serve una descrizione di cosa generare.")
+    out = resolve(ctx, output)
+    if out.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+        out = out.with_suffix(".png")
+    if out.exists():
+        await require_approval(ctx, "genera_immagine", f"Sovrascrive {display(ctx, out)}")
+    try:
+        rep = await ctx.genera.immagine(prompt=prompt, out_path=out, size=size, steps=steps,
+                                        negative=negative, seed=seed)
+    except (RuntimeError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    touched = getattr(ctx.run, "touched", None) if ctx.run is not None else None
+    if isinstance(touched, set):
+        touched.add(rep["path"])
+    return (f"Immagine generata: {display(ctx, Path(rep['path']))} - {rep['width']}x{rep['height']}, "
+            f"{rep['steps']} passi, {rep['seconds']} s, {rep['size_bytes'] / 1024:.0f} KB")
+
+
+async def genera_clip(ctx: ToolContext, prompt: str, output: str, size: str = "verticale",
+                      seconds: float = 2.0, image: str = "", steps: int = 20, seed: int = -1) -> str:
+    """Genera uno spezzone video sul PC. Con 'image' anima una foto gia' esistente."""
+    if ctx.genera is None:
+        raise ToolError("La generazione locale non e' disponibile in questa installazione.")
+    st = ctx.genera.status()
+    if not st.get("videos"):
+        raise ToolError(st.get("hint") or
+                        f"Modelli per il video non pronti: {', '.join(st.get('missing_videos') or [])}")
+    if not (prompt or "").strip():
+        raise ToolError("Serve una descrizione di cosa generare.")
+    partenza = None
+    if image.strip():
+        partenza = _image_path(ctx, image)
+        if not partenza.is_file():
+            raise ToolError(f"Immagine di partenza '{image}' non trovata.")
+    out = resolve(ctx, output)
+    if out.suffix.lower() != ".mp4":
+        out = out.with_suffix(".mp4")
+    if out.exists():
+        await require_approval(ctx, "genera_clip", f"Sovrascrive {display(ctx, out)}")
+    frames = int(max(0.3, min(float(seconds or 2.0), 5.0)) * 24) + 1
+    try:
+        rep = await ctx.genera.clip(prompt=prompt, out_path=out, size=size, frames=frames,
+                                    steps=steps, seed=seed, image=partenza)
+    except (RuntimeError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    touched = getattr(ctx.run, "touched", None) if ctx.run is not None else None
+    if isinstance(touched, set):
+        touched.add(rep["path"])
+    da = f", animando {Path(rep['from_image']).name}" if rep.get("from_image") else ""
+    return (f"Clip generata: {display(ctx, Path(rep['path']))} - {rep['width']}x{rep['height']}, "
+            f"{rep['video_seconds']} s di video ({rep['frames']} fotogrammi){da}. "
+            f"Tempo di calcolo: {rep['seconds'] / 60:.1f} minuti. "
+            f"Usala come scena in make_video con \"video\".")
+
+
 async def create_archive(ctx: ToolContext, paths: Any, output: str) -> str:
     """Crea uno .zip con i file o le cartelle indicati."""
     if isinstance(paths, str):
@@ -880,6 +946,27 @@ def build_registry() -> ToolRegistry:
          "transitions": {"type": "boolean", "description":
              "dissolvenza incrociata fra le scene (default true); false per stacchi netti"}},
         make_video, risk="write", required=["scenes", "output"])
+    add("genera_immagine", "Genera un'immagine sul PC da una descrizione (Z-Image Turbo). "
+        "Nessun servizio esterno, nessun costo. Richiede qualche decina di secondi.",
+        {"prompt": {**s, "description": "descrizione dettagliata in inglese o italiano"},
+         "output": {**s, "description": "percorso del file .png da creare"},
+         "size": {**s, "enum": ["verticale", "quadrato", "orizzontale"],
+                  "description": "verticale per Short/Reel"},
+         "steps": {**i, "description": "passi di calcolo (default 8, massimo 20)"},
+         "negative": {**s, "description": "cosa evitare nell'immagine"},
+         "seed": {**i, "description": "seme per ripetere lo stesso risultato; -1 = casuale"}},
+        genera_immagine, risk="write", required=["prompt", "output"])
+    add("genera_clip", "Genera uno spezzone video sul PC (Wan 2.2). Con 'image' anima una foto esistente. "
+        "LENTO: parecchi minuti per pochi secondi di video, e intanto il modello di chat viene scaricato "
+        "dalla GPU. Usalo per una scena sola, non per un video intero.",
+        {"prompt": {**s, "description": "cosa deve succedere nella scena, con il movimento"},
+         "output": {**s, "description": "percorso del file .mp4 da creare"},
+         "size": {**s, "enum": ["verticale", "quadrato", "orizzontale"]},
+         "seconds": {"type": "number", "description": "durata del video, da 0.3 a 5 secondi"},
+         "image": {**s, "description": "foto di partenza da animare (opzionale)"},
+         "steps": {**i, "description": "passi di calcolo (default 20)"},
+         "seed": {**i, "description": "seme per ripetere lo stesso risultato; -1 = casuale"}},
+        genera_clip, risk="write", required=["prompt", "output"])
     add("create_archive", "Crea un archivio .zip con file o cartelle della cartella di lavoro.",
         {"paths": {"type": "array", "items": s, "description": "file e cartelle da includere"},
          "output": {**s, "description": "percorso del file .zip da creare"}},

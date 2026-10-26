@@ -317,12 +317,13 @@ _UNSUPPORTED_CLAIM = re.compile(r"\b(test\w*|verificat\w*|provat\w*|controllat\w
 class Orchestrator:
     def __init__(self, llm: ChatModel, tools: ToolRegistry, db: Database, rag: Any, settings: Any,
                  approvals: ApprovalManager, web: Any = None, browser: Any = None, vision: Any = None,
-                 video: Any = None, voice: Any = None):
+                 video: Any = None, voice: Any = None, genera: Any = None):
         self.web = web
         self.browser = browser
         self.vision = vision
         self.video = video
         self.voice = voice
+        self.genera = genera
         self.llm = llm
         self.tools = tools
         self.db = db
@@ -491,7 +492,7 @@ class Orchestrator:
             return True
         return ToolContext(settings=self.settings, db=self.db, rag=self.rag, agent=agent, run=ctx, consult=consult,
                            approve=approve, web=self.web, browser=self.browser, vision=self.vision,
-                           video=self.video, voice=self.voice)
+                           video=self.video, voice=self.voice, genera=self.genera)
 
     async def _call_tool(self, ctx: RunContext, task: Task | None, agent: str, name: str, args: dict,
                          call_id: str, allowed: list[str]) -> str:

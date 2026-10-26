@@ -86,9 +86,15 @@ AGENTS: dict[str, AgentSpec] = {a.id: a for a in [
             "frame. Pass 'title' once: it is the opening card only. ALWAYS call video_info on the file afterwards and report the "
             "measured duration and resolution: never claim a video exists without that measurement. "
             "If make_video reports notes (missing voice, unreadable image), repeat them to the user instead "
-            "of hiding them."),
-        tools=["make_video", "video_info", "list_files", "read_file", "search_text", "write_file", "make_dir",
-               "analyze_image", *COMMON_TOOLS],
+            "of hiding them. "
+            "You can also CREATE what is missing, locally and for free: genera_immagine makes a background "
+            "from a description in under a minute - use it when the user has no photo for a scene. "
+            "genera_clip makes a few seconds of moving video, but it takes MANY MINUTES and unloads the chat "
+            "model from the GPU while it works: use it for ONE hero scene at most, never for a whole video, "
+            "and tell the user the wait before you start. Real photos and real phone footage from the user "
+            "always beat a generated one: generate only what they do not have."),
+        tools=["make_video", "video_info", "genera_immagine", "genera_clip", "list_files", "read_file",
+               "search_text", "write_file", "make_dir", "analyze_image", *COMMON_TOOLS],
     ),
     AgentSpec(
         id="operatore", name="Operatore", color="#5b6b7f",
