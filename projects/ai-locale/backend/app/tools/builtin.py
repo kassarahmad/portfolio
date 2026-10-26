@@ -594,8 +594,8 @@ async def extract_archive(ctx: ToolContext, path: str, destination: str = "") ->
 
 async def make_video(ctx: ToolContext, scenes: Any, output: str, aspect: str = "9:16",
                      title: str = "", narrate: bool = True, captions: bool = True,
-                     music: str = "") -> str:
-    """Monta un video verticale/orizzontale da scene di testo e immagini, con voce e sottotitoli."""
+                     music: str = "", transitions: bool = True) -> str:
+    """Monta un video da scene di foto, spezzoni girati e cartoncini, con voce e sottotitoli."""
     if ctx.video is None:
         raise ToolError("Il montaggio video non e' disponibile in questa installazione.")
     st = ctx.video.status()
@@ -618,10 +618,14 @@ async def make_video(ctx: ToolContext, scenes: Any, output: str, aspect: str = "
         if not isinstance(raw, dict):
             raise ToolError(f"Scena {i + 1} non valida: usa un oggetto con 'narration' e opzionalmente 'image'.")
         sc = dict(raw)
-        img = str(sc.get("image") or "").strip()
-        if img:
-            target = _image_path(ctx, img)          # stesse regole di sicurezza delle immagini
-            sc["image"] = str(target)
+        for chiave in ("image", "video"):
+            valore = str(sc.get(chiave) or "").strip()
+            if not valore:
+                continue
+            target = _image_path(ctx, valore)       # stesse regole di sicurezza degli allegati
+            if not target.is_file():
+                raise ToolError(f"File '{valore}' non trovato.")
+            sc[chiave] = str(target)
         prepared.append(sc)
 
     out = resolve(ctx, output)
@@ -638,7 +642,7 @@ async def make_video(ctx: ToolContext, scenes: Any, output: str, aspect: str = "
     try:
         report = await ctx.video.make(scenes=prepared, out_path=out, workdir=workdir(ctx), aspect=aspect,
                                       voice=(ctx.voice if narrate else None), music=track, title=title,
-                                      captions=captions)
+                                      captions=captions, transitions=transitions)
     except (RuntimeError, ValueError) as exc:
         raise ToolError(f"Montaggio non riuscito: {exc}") from exc
 
@@ -859,15 +863,22 @@ def build_registry() -> ToolRegistry:
         "zoom lento, voce narrante, sottotitoli impressi piu' file .srt e .vtt. Tutto sul PC, senza servizi esterni.",
         {"scenes": {"type": "array", "description":
             "Lista di scene in ordine. Ogni scena: {\"narration\": testo letto e sottotitolato, "
-            "\"image\": percorso immagine di sfondo (opzionale: senza immagine disegna un cartoncino), "
-            "\"seconds\": durata forzata (opzionale, altrimenti la decide la voce)}",
+            "\"image\": percorso di una foto di sfondo, oppure \"video\": percorso di uno spezzone "
+            "girato (mp4/mov): viene ritagliato nel formato e mantiene il suo movimento e il suo audio "
+            "ambientale sotto la voce; \"ambient\": false lo zittisce. Senza immagine ne' video disegna "
+            "un cartoncino colorato con il testo di \"card\". \"seconds\": durata forzata (opzionale, "
+            "altrimenti la decide la voce o la lunghezza dello spezzone)}",
             "items": {"type": "object"}},
          "output": {**s, "description": "percorso del file .mp4 da creare nella cartella di lavoro"},
          "aspect": {**s, "enum": list(VIDEO_ASPECTS), "description": "9:16 per Short/Reel, 16:9 per YouTube"},
          "title": {**s, "description": "titolo usato nei cartoncini senza immagine"},
          "narrate": {"type": "boolean", "description": "legge la narrazione con la voce locale (default true)"},
          "captions": {"type": "boolean", "description": "imprime i sottotitoli nel video (default true)"},
-         "music": {**s, "description": "traccia musicale di sottofondo opzionale, a volume basso"}},
+         "music": {**s, "description": "traccia musicale di sottofondo opzionale, a volume basso"},
+         "video_scenes_hint": {**s, "description":
+             "non usare: le riprese si indicano con \"video\" dentro ogni scena"},
+         "transitions": {"type": "boolean", "description":
+             "dissolvenza incrociata fra le scene (default true); false per stacchi netti"}},
         make_video, risk="write", required=["scenes", "output"])
     add("create_archive", "Crea un archivio .zip con file o cartelle della cartella di lavoro.",
         {"paths": {"type": "array", "items": s, "description": "file e cartelle da includere"},

@@ -2,6 +2,7 @@
 
 Se ffmpeg non c'e', i test si saltano invece di dichiarare un successo finto.
 """
+import re
 import unittest
 from pathlib import Path
 
@@ -99,7 +100,7 @@ class MontageTest(unittest.TestCase):
     def test_measuring_works_without_ffprobe(self):
         """Su Windows imageio-ffmpeg porta solo ffmpeg: la misura deve funzionare lo stesso."""
         out = self.wd / "senza-ffprobe.mp4"
-        run(self.studio.make(scenes=[{"narration": "Una scena.", "seconds": 1.2}],
+        run(self.studio.make(scenes=[{"narration": "Una scena.", "seconds": 2.0}],
                              out_path=out, workdir=self.wd, aspect="16:9"))
         vero = V.ffprobe_exe
         V.ffprobe_exe = lambda: None
@@ -109,7 +110,7 @@ class MontageTest(unittest.TestCase):
             V.ffprobe_exe = vero
         self.assertEqual(info["measured_with"], "ffmpeg")
         self.assertEqual((info["width"], info["height"]), (1920, 1080))
-        self.assertAlmostEqual(info["seconds"], 1.2, delta=0.4)
+        self.assertAlmostEqual(info["seconds"], 2.0, delta=0.4)
         self.assertEqual(info["video_codec"], "h264")
 
     def test_probe_measures_an_existing_file(self):
@@ -126,7 +127,7 @@ class MontageTest(unittest.TestCase):
             scenes=[{"narration": "Scena con immagine inesistente.", "image": str(self.wd / "boh.png"),
                      "seconds": 1.0}], out_path=out, workdir=self.wd))
         self.assertTrue(out.is_file())
-        self.assertTrue(any("non trovata" in n for n in rep["notes"]), rep["notes"])
+        self.assertTrue(any("non trovato" in n for n in rep["notes"]), rep["notes"])
 
     def test_refuses_an_empty_scene_list(self):
         with self.assertRaises(ValueError):
@@ -220,3 +221,147 @@ class VideoToolsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(HAS_FFMPEG, "ffmpeg non disponibile in questo ambiente")
+class PolishTest(unittest.TestCase):
+    """Rifiniture che fanno la differenza fra un video e una sequenza di immagini."""
+
+    def setUp(self):
+        self.s, self.tmp = temp_settings()
+        self.studio = V.VideoStudio(self.s)
+        self.wd = self.s.workspace_dir
+        from PIL import Image
+        for n, c in (("a.png", (120, 40, 30)), ("b.png", (30, 90, 120)), ("c.png", (40, 110, 50))):
+            Image.new("RGB", (1600, 900), c).save(self.wd / n)
+        self.scene = [{"narration": "Prima scena di prova.", "image": str(self.wd / "a.png"), "seconds": 3.0},
+                      {"narration": "Seconda scena di prova.", "image": str(self.wd / "b.png"), "seconds": 3.0},
+                      {"narration": "Terza scena di prova.", "image": str(self.wd / "c.png"), "seconds": 3.0}]
+
+    def tearDown(self):
+        cleanup(self.tmp)
+
+    def test_transitions_make_the_video_shorter_than_the_sum_of_scenes(self):
+        """Le scene si sovrappongono: 3 scene da 3 s con dissolvenze durano meno di 9 s."""
+        senza = run(self.studio.make(scenes=self.scene, out_path=self.wd / "senza.mp4",
+                                     workdir=self.wd, transitions=False))
+        con = run(self.studio.make(scenes=self.scene, out_path=self.wd / "con.mp4",
+                                   workdir=self.wd, transitions=True))
+        self.assertAlmostEqual(senza["measured"]["seconds"], 9.0, delta=0.4)
+        atteso = 9.0 - 2 * V.XFADE
+        self.assertAlmostEqual(con["measured"]["seconds"], atteso, delta=0.4)
+        self.assertLess(con["measured"]["seconds"], senza["measured"]["seconds"])
+
+    def test_no_subtitle_falls_inside_a_transition(self):
+        """Due testi sovrapposti durante un incrocio sono illeggibili: non deve accadere."""
+        rep = run(self.studio.make(scenes=self.scene, out_path=self.wd / "v.mp4",
+                                   workdir=self.wd, transitions=True))
+        testo = (self.wd / "v.srt").read_text(encoding="utf-8")
+        tempi = re.findall(r"(\d\d):(\d\d):(\d\d),(\d\d\d) --> (\d\d):(\d\d):(\d\d),(\d\d\d)", testo)
+        secondi = [(int(h) * 3600 + int(m) * 60 + int(sec) + int(ms) / 1000,
+                    int(h2) * 3600 + int(m2) * 60 + int(s2) + int(ms2) / 1000)
+                   for h, m, sec, ms, h2, m2, s2, ms2 in tempi]
+        durata = rep["measured"]["seconds"]
+        for i in range(1, len(self.scene)):                 # istanti in cui avviene un incrocio
+            inizio = i * (3.0 - V.XFADE)
+            for a, b in secondi:
+                sovrappone = a < inizio + V.XFADE and b > inizio
+                self.assertFalse(sovrappone, f"sottotitolo {a}-{b} dentro la dissolvenza a {inizio:.2f}s")
+        self.assertLess(secondi[-1][1], durata + 0.1)
+
+    def test_each_scene_gets_a_different_camera_move(self):
+        self.assertGreaterEqual(len(V.MOVES), 4)
+        self.assertEqual(len({m[0] + m[1] + m[2] for m in V.MOVES}), len(V.MOVES))
+
+    def test_a_failed_transition_falls_back_to_hard_cuts(self):
+        """Se la dissolvenza non riesce il video esce lo stesso, con una nota."""
+        vero = V.run
+        chiamate = {"n": 0}
+
+        async def finto(argv, cwd, timeout, log_path=None):
+            if "xfade" in " ".join(argv):
+                chiamate["n"] += 1
+                return 1, "errore finto nella dissolvenza"
+            return await vero(argv, cwd, timeout, log_path)
+        V.run = finto
+        try:
+            rep = run(self.studio.make(scenes=self.scene, out_path=self.wd / "ripiego.mp4", workdir=self.wd))
+        finally:
+            V.run = vero
+        self.assertEqual(chiamate["n"], 1)
+        self.assertTrue((self.wd / "ripiego.mp4").is_file())
+        self.assertTrue(any("netto" in n for n in rep["notes"]), rep["notes"])
+        self.assertAlmostEqual(rep["measured"]["seconds"], 9.0, delta=0.4)
+
+
+@unittest.skipUnless(HAS_FFMPEG, "ffmpeg non disponibile in questo ambiente")
+class FootageSceneTest(unittest.TestCase):
+    """Scene costruite su uno spezzone girato col telefono, non su una foto ferma."""
+
+    def setUp(self):
+        self.s, self.tmp = temp_settings()
+        self.studio = V.VideoStudio(self.s)
+        self.wd = self.s.workspace_dir
+        self.clip = self.wd / "ripresa.mp4"
+        run(V.run([V.ffmpeg_exe(), "-y", "-v", "error",
+                   "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=6",
+                   "-f", "lavfi", "-t", "6", "-i", "sine=frequency=300",
+                   "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+                   str(self.clip)], self.wd, 120))
+        self.muto = self.wd / "muta.mp4"
+        run(V.run([V.ffmpeg_exe(), "-y", "-v", "error",
+                   "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=6",
+                   "-c:v", "libx264", "-pix_fmt", "yuv420p", str(self.muto)], self.wd, 120))
+
+    def tearDown(self):
+        cleanup(self.tmp)
+
+    async def _volume(self, path, start, length):
+        _, out = await V.run([V.ffmpeg_exe(), "-hide_banner", "-ss", str(start), "-t", str(length),
+                              "-i", str(path), "-af", "volumedetect", "-f", "null", "-"], self.wd, 120)
+        m = re.search(r"mean_volume:\s*(-?[\d.]+) dB", out)
+        return float(m.group(1)) if m else 0.0
+
+    def test_a_clip_is_cropped_to_the_frame_and_keeps_its_length(self):
+        rep = run(self.studio.make(scenes=[{"video": str(self.clip), "seconds": 4.0}],
+                                   out_path=self.wd / "v.mp4", workdir=self.wd, aspect="9:16"))
+        m = rep["measured"]
+        self.assertEqual((m["width"], m["height"]), (1080, 1920))
+        self.assertAlmostEqual(m["seconds"], 4.0, delta=0.4)
+
+    def test_a_clip_shorter_than_the_scene_is_reported_not_hidden(self):
+        rep = run(self.studio.make(scenes=[{"video": str(self.clip), "seconds": 9.0}],
+                                   out_path=self.wd / "corta.mp4", workdir=self.wd))
+        self.assertAlmostEqual(rep["measured"]["seconds"], 9.0, delta=0.4)   # congelato, non tagliato
+        self.assertTrue(any("resta fermo" in n for n in rep["notes"]), rep["notes"])
+
+    def test_ambient_sound_is_kept_and_can_be_switched_off(self):
+        rep = run(self.studio.make(
+            scenes=[{"video": str(self.clip), "seconds": 3.0},
+                    {"video": str(self.clip), "seconds": 3.0, "ambient": False}],
+            out_path=self.wd / "amb.mp4", workdir=self.wd, transitions=False))
+        self.assertEqual(rep["measured"]["audio_codec"], "aac")
+        con = run(self._volume(self.wd / "amb.mp4", 0.5, 2.0))
+        senza = run(self._volume(self.wd / "amb.mp4", 3.5, 2.0))
+        self.assertGreater(con, -60.0, "l'ambiente della ripresa deve sentirsi")
+        self.assertLess(senza, -60.0, "con ambient=false la scena deve essere muta")
+
+    def test_a_clip_without_audio_does_not_break_the_montage(self):
+        rep = run(self.studio.make(scenes=[{"video": str(self.muto), "seconds": 3.0},
+                                           {"narration": "testo", "seconds": 3.0}],
+                                   out_path=self.wd / "muto.mp4", workdir=self.wd))
+        self.assertEqual(rep["measured"]["audio_codec"], "aac")
+        self.assertEqual(rep["scenes_used"], 2)
+
+    def test_a_clip_decides_the_scene_length_when_nothing_else_does(self):
+        rep = run(self.studio.make(scenes=[{"video": str(self.clip)}],
+                                   out_path=self.wd / "auto.mp4", workdir=self.wd))
+        self.assertAlmostEqual(rep["measured"]["seconds"], 6.0, delta=0.5)
+
+    def test_an_unreadable_file_falls_back_to_a_card(self):
+        falso = self.wd / "rotto.mp4"
+        falso.write_bytes(b"non sono un video")
+        rep = run(self.studio.make(scenes=[{"narration": "testo", "video": str(falso), "seconds": 3.0}],
+                                   out_path=self.wd / "rip.mp4", workdir=self.wd))
+        self.assertTrue((self.wd / "rip.mp4").is_file())
+        self.assertTrue(any("illeggibile" in n for n in rep["notes"]), rep["notes"])
